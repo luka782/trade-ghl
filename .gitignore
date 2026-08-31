@@ -1,0 +1,50 @@
+# Python 虚拟环境、缓存与测试产物
+.venv/
+venv/
+**/.venv/
+**/venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+**/.pytest_cache/
+.coverage
+htmlcov/
+**/htmlcov/
+
+# 本地行情、研究结果与数据库：可在目标机器重新下载或单独备份，不进入代码仓库
+backend/.quant_data/
+backend/data/
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+backend/reports/
+*.parquet
+*.db
+*.sqlite
+*.sqlite3
+
+# 环境变量文件可能保存服务地址、Token 或其他私密配置
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+backend/.env
+
+# 前端依赖与构建产物
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+node_modules/
+dist/
+coverage/
+
+# 日志及编辑器/系统临时文件
+*.log
+logs/
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
