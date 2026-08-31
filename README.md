@@ -86,12 +86,18 @@ backend/
     data/          # 数据源接口与 AkShare 实现
     factors/       # 因子、预处理与有效性评价
     backtest/      # 调仓、成交约束与绩效统计
+    timing/        # 单标的择时状态机与技术指标
+    validation/    # Walk-Forward 与过拟合诊断
     main.py        # FastAPI
     storage.py     # Parquet 与 SQLite
   tests/
-  user_factors/  # 本地 Python 因子插件
+  user_factors/   # 本地 Python 因子插件
 frontend/
   src/
+backend/Dockerfile
+frontend/Dockerfile
+docker-compose.yml
+Caddyfile
 start-backend.ps1
 start-frontend.ps1
 ```
@@ -203,3 +209,153 @@ python -m scripts.run_etf_research
 ```text
 VITE_API_URL=http://localhost:8000/api
 ```
+
+## 阿里云 ECS 生产部署
+
+以下步骤适用于 Ubuntu 22.04、Docker Compose 和阿里云 ECS。生产容器包括：
+
+- `backend`：FastAPI，只在 Docker 内部监听 `8000`；
+- `frontend`：Nginx 提供已构建的 React 静态文件，只在 Docker 内部监听 `80`；
+- `caddy`：唯一公网入口，监听宿主机 `80/443`，将 `/api/*` 转发到后端。
+
+Parquet、SQLite、报告和用户因子全部保存在 ECS 的 `/data/quant`，重新构建或删除
+容器不会删除该目录。GitHub 只保存代码，不保存运行数据。
+
+### 1. ECS 与安全组
+
+建议至少使用 2 核 4GB、Ubuntu 22.04 和 50GB 云盘。安全组入方向只开放：
+
+- TCP `22`：建议只允许自己的公网 IP；
+- TCP `80`：首次 IP 测试使用；
+- TCP/UDP `443`：配置域名 HTTPS 后使用。
+
+不要开放 `8000` 或 `5173`。本项目当前没有用户登录系统，通过公网 IP 测试时，
+建议暂时将 `80` 端口来源限制为自己的公网 IP；长期公网使用前应增加身份认证。
+
+### 2. 安装 Docker 并克隆项目
+
+通过 SSH 登录 ECS 后执行：
+
+```bash
+apt update
+apt install -y git curl ca-certificates
+curl -fsSL https://get.docker.com | sh
+systemctl enable --now docker
+
+git clone https://github.com/luka782/trade-ghl.git /opt/trade-ghl
+cd /opt/trade-ghl
+```
+
+### 3. 创建持久化目录和环境配置
+
+```bash
+mkdir -p /data/quant/parquet
+mkdir -p /data/quant/reports
+mkdir -p /data/quant/user_factors
+mkdir -p /data/quant/backups
+
+cp .env.example .env
+chmod 600 .env
+```
+
+首次通过 ECS 公网 IP 测试时，`.env` 保持：
+
+```text
+SITE_ADDRESS=:80
+QUANT_HOST_DATA_ROOT=/data/quant
+```
+
+真实 `.env` 已被 Git 忽略，不要提交其中的域名或其他私密配置。
+
+### 4. 构建、启动和检查
+
+```bash
+cd /opt/trade-ghl
+docker compose config
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail=100
+curl http://127.0.0.1/api/health
+```
+
+随后访问 `http://ECS公网IP`。第一次需要在“数据管理”页面下载历史行情，下载结果
+会写入 `/data/quant/parquet`，回测记录会写入 `/data/quant/quant.db`。
+
+### 5. 配置域名与 HTTPS
+
+在域名 DNS 中添加 A 记录，将例如 `quant.example.com` 指向 ECS 公网 IP。解析生效后
+修改服务器的 `/opt/trade-ghl/.env`：
+
+```text
+SITE_ADDRESS=quant.example.com
+QUANT_HOST_DATA_ROOT=/data/quant
+```
+
+然后重新加载 Caddy：
+
+```bash
+cd /opt/trade-ghl
+docker compose up -d
+docker compose logs --tail=100 caddy
+```
+
+Caddy 会自动申请和续期 HTTPS 证书。确认 `https://quant.example.com` 可访问后，
+可以在安全组中取消不必要的公网 HTTP 测试规则；保留 `80` 时 Caddy 会自动跳转 HTTPS。
+
+### 6. 更新线上版本
+
+先在开发电脑完成测试并推送 GitHub，再在 ECS 执行：
+
+```bash
+cd /opt/trade-ghl
+git pull --ff-only origin main
+docker compose up -d --build --remove-orphans
+docker compose ps
+curl http://127.0.0.1/api/health
+```
+
+代码更新不会删除 `/data/quant`。若要回滚，先从 `git log --oneline` 找到稳定提交，
+切换到该提交后重新构建：
+
+```bash
+git switch --detach <稳定提交号>
+docker compose up -d --build
+```
+
+回到最新版：
+
+```bash
+git switch main
+git pull --ff-only origin main
+docker compose up -d --build
+```
+
+### 7. 备份和恢复
+
+为避免备份到正在写入的 SQLite 文件，最简单可靠的个人部署方案是短暂停止后端，
+再压缩整个数据目录：
+
+```bash
+cd /opt/trade-ghl
+docker compose stop backend
+tar -C /data -czf "/data/quant/backups/quant-$(date +%F-%H%M%S).tar.gz" \
+  --exclude='quant/backups' quant
+docker compose start backend
+```
+
+将备份包下载到本地或上传到阿里云 OSS，才能防止误删 ECS/云盘导致全部副本丢失。
+OSS AccessKey 应配置在服务器安全的凭据文件或实例 RAM 角色中，不要写入仓库。
+
+恢复前先停止后端，并确认备份文件路径：
+
+```bash
+cd /opt/trade-ghl
+docker compose stop backend
+mv /data/quant "/data/quant.before-restore-$(date +%F-%H%M%S)"
+mkdir -p /data/quant
+tar -C /data -xzf /安全位置/quant-YYYY-MM-DD-HHMMSS.tar.gz
+docker compose start backend
+docker compose ps
+```
+
+恢复操作会替换行情和 SQLite 状态，执行前必须保留当前 `/data/quant` 的副本。
