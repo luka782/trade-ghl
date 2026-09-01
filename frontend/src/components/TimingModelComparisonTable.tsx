@@ -4,9 +4,13 @@ import { Badge, ChartEmpty, Panel } from './ui'
 const MODELS = [
   { keys: ['buy_and_hold', 'buy_hold', 'hold'], label: '买入持有' },
   { keys: ['ma200', 'ma_200', 'moving_average'], label: '长期均线' },
+  { keys: ['trend'], label: '原趋势策略' },
   { keys: ['rsi_bollinger', 'rsi_bbands', 'reversion'], label: 'RSI + 布林带' },
   { keys: ['factor_dual', 'dual_score'], label: '智能双评分' },
-  { keys: ['regime_reversion', 'combined'], label: '综合趋势反转' },
+  { keys: ['regime_reversion_legacy'], label: '综合趋势反转旧版' },
+  { keys: ['regime_reversion', 'combined'], label: '综合趋势反转新版' },
+  { keys: ['donchian_atr'], label: 'Donchian + ATR' },
+  { keys: ['ma_crossover_atr'], label: '双均线 + ATR' },
 ] as const
 
 function comparisonRows(source: unknown): Record<string, unknown>[] {
@@ -56,27 +60,28 @@ export function TimingModelComparisonTable({ report }: { report: unknown }) {
   if (available.length === 0) {
     return (
       <Panel
-        title="五模型同口径对照"
-        subtitle="买入持有、长期均线、RSI+布林带、智能双评分与综合趋势反转"
+        title="九模型同口径对照"
+        subtitle="基准、原策略、新旧反转与两种CTA-lite策略"
       >
-        <ChartEmpty text="任务完成后显示五模型对照结果" />
+        <ChartEmpty text="任务完成后显示九模型对照结果" />
       </Panel>
     )
   }
   const rows = MODELS.map((model) => {
-    const row = available.find((candidate) => {
-      const key = modelKey(candidate)
-      return model.keys.some(
-        (alias) => key === alias || key.includes(alias),
+    const row =
+      available.find((candidate) =>
+        model.keys.some((alias) => modelKey(candidate) === alias),
+      ) ??
+      available.find((candidate) =>
+        model.keys.some((alias) => modelKey(candidate).includes(alias)),
       )
-    })
     return { ...model, row }
   })
 
   return (
     <Panel
-      title="五模型同口径对照"
-      subtitle="所有模型使用相同数据、费用、T+1 和交易约束"
+      title="九模型同口径对照"
+      subtitle="所有模型使用相同数据、费用、T日收盘信号与T+1开盘成交约束"
     >
       <div className="table-wrap timing-comparison-table">
         <table>

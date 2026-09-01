@@ -43,16 +43,18 @@ from .schemas import (
 from .storage import Storage
 from .timing import TimingConfig, run_timing
 from .timing.indicators import (
+    average_true_range,
     bollinger_bands,
     distance_to_moving_average,
+    donchian_channels,
     moving_average,
     moving_average_slope,
     wilder_rsi,
 )
-from .validation.benchmarks import baseline_metric_helpers
 from .validation.diagnostics import (
     cscv_pbo,
     deflated_sharpe_ratio,
+    sharpe_ratio,
     walk_forward_efficiency,
 )
 from .validation.protocol import (
@@ -62,6 +64,7 @@ from .validation.protocol import (
 from .validation.search import (
     generate_preregistered_candidates,
     parameter_perturbations,
+    perturbation_stability,
     robust_multi_symbol_objective,
 )
 from .validation.walk_forward import generate_rolling_folds
@@ -261,6 +264,65 @@ def _attach_regime_columns(
         frame["entry_score_final"] - frame["exit_score_final"]
     ) / 2
     frame["trend_score"] = entry_regime
+    for name, values in (
+        ("regime_entry_factor", frame["entry_score"]),
+        ("regime_entry_rsi", entry_rsi),
+        ("regime_entry_bollinger", entry_bb),
+        ("regime_entry_market", entry_regime),
+        ("regime_exit_factor", frame["exit_score"]),
+        ("regime_exit_rsi", exit_rsi),
+        ("regime_exit_bollinger", exit_bb),
+        ("regime_exit_market", exit_regime),
+    ):
+        frame[f"contribution_{name}"] = values
+    return frame
+
+
+def _attach_timing_indicator_columns(
+    signal_frame: pd.DataFrame, options: Any
+) -> pd.DataFrame:
+    """按策略和仓位需求集中准备因果指标，供API与Walk-Forward共用。"""
+    frame = signal_frame.copy()
+    frame["atr_20"] = average_true_range(frame, options.atr_period)
+    if options.timing_style in {
+        "regime_reversion",
+        "regime_reversion_legacy",
+        "rsi_bollinger",
+    }:
+        frame = _attach_regime_columns(frame, options)
+    if options.timing_style == "donchian_atr":
+        channels = donchian_channels(
+            frame,
+            options.donchian_entry_window,
+            options.donchian_exit_window,
+        )
+        frame["donchian_upper"] = channels["upper"]
+        frame["donchian_lower"] = channels["lower"]
+        if options.donchian_trend_filter:
+            frame["ma_200"] = moving_average(
+                frame, options.ma_period
+            )
+            frame["ma_slope_20"] = moving_average_slope(
+                frame,
+                options.ma_period,
+                slope_periods=options.ma_slope_period,
+            )
+    elif options.timing_style == "ma_crossover_atr":
+        frame["ma_fast"] = moving_average(
+            frame, options.ma_fast_period
+        )
+        frame["ma_slow"] = moving_average(
+            frame, options.ma_slow_period
+        )
+        frame["ma_slow_slope"] = moving_average_slope(
+            frame,
+            options.ma_slow_period,
+            slope_periods=options.ma_slope_period,
+        )
+    elif options.timing_style == "ma_200":
+        frame["ma_200"] = moving_average(
+            frame, options.ma_period
+        )
     return frame
 
 
@@ -390,7 +452,7 @@ def _evaluate_regime_segment(
     returns: list[pd.Series] = []
     allowed = pd.DatetimeIndex(dates)
     for symbol, base in frames.items():
-        signal = _attach_regime_columns(base, options)
+        signal = _attach_timing_indicator_columns(base, options)
         segment = signal[
             pd.to_datetime(signal["date"]).dt.normalize().isin(allowed)
         ].reset_index(drop=True)
@@ -487,11 +549,15 @@ def _comparison_view(metrics: dict[str, Any]) -> dict[str, Any]:
         "trade_count": sum(
             int(item.get("trade_count") or 0) for item in symbols
         ),
+        "closed_trades": sum(
+            int(item.get("round_trip_count") or 0) for item in symbols
+        ),
         "total_cost": sum(
             float(item.get("total_cost") or 0) for item in symbols
         ),
         "evidence_sufficient": all(
-            int(item.get("round_trip_count") or 0) >= 2
+            int(item.get("round_trip_count") or 0) >= 5
+            and float(item.get("market_exposure") or 0.0) >= 0.10
             for item in symbols
         ),
     }
@@ -533,6 +599,16 @@ def _run_walk_forward_research(
             purge_sessions=body.protocol.purge_sessions,
             embargo_sessions=body.protocol.embargo_sessions,
             candidate_count=96,
+            metadata={
+                "minimum_round_trips_per_symbol": (
+                    body.protocol.minimum_round_trips_per_symbol
+                ),
+                "minimum_market_exposure": (
+                    body.protocol.minimum_market_exposure
+                ),
+                "locked_oos_policy": "single_evaluation_after_selection",
+                "execution_policy": "T_close_signal_T_plus_1_open",
+            },
         )
         common_dates = pd.DatetimeIndex(symbol_dates[body.symbols[0]])
         for symbol in body.symbols[1:]:
@@ -565,6 +641,9 @@ def _run_walk_forward_research(
         trade_matrix = np.zeros(
             (len(folds), len(candidates)), dtype=int
         )
+        exposure_matrix = np.zeros(
+            (len(folds), len(candidates)), dtype=float
+        )
         candidate_rows: list[dict[str, Any]] = []
         trial_returns: dict[int, list[pd.Series]] = {
             index: [] for index in range(len(candidates))
@@ -585,14 +664,50 @@ def _run_walk_forward_research(
                 )
                 validation_matrix[fold_index, candidate_index] = value
                 trade_matrix[fold_index, candidate_index] = sum(
-                    int(item.get("trade_count") or 0)
+                    int(item.get("round_trip_count") or 0)
                     for item in (
                         metrics.get("symbol_metrics") or {}
                     ).values()
                 )
+                exposure_values = [
+                    float(item.get("market_exposure") or 0.0)
+                    for item in (
+                        metrics.get("symbol_metrics") or {}
+                    ).values()
+                ]
+                exposure_matrix[
+                    fold_index, candidate_index
+                ] = (
+                    float(np.median(exposure_values))
+                    if exposure_values
+                    else 0.0
+                )
                 fold_scores.append(value)
                 trial_returns[candidate_index].append(combined)
             total_trades = int(trade_matrix[:, candidate_index].sum())
+            mean_exposure = float(
+                np.mean(exposure_matrix[:, candidate_index])
+            )
+            minimum_round_trips = (
+                len(body.symbols)
+                * body.protocol.minimum_round_trips_per_symbol
+            )
+            eligible = (
+                np.isfinite(fold_scores).any()
+                and total_trades >= minimum_round_trips
+                and mean_exposure
+                >= body.protocol.minimum_market_exposure
+            )
+            combined_validation = (
+                pd.concat(
+                    trial_returns[candidate_index], axis=0
+                ).sort_index()
+                if trial_returns[candidate_index]
+                else pd.Series(dtype=float)
+            )
+            validation_sharpe = sharpe_ratio(
+                combined_validation.dropna()
+            )
             candidate_rows.append(
                 {
                     **candidate.to_dict(),
@@ -602,15 +717,25 @@ def _run_walk_forward_research(
                         and total_trades > 0
                         else None
                     ),
-                    "status": (
-                        "eligible"
-                        if np.isfinite(fold_scores).any()
-                        and total_trades > 0
-                        else "eliminated"
+                    "validation_sharpe": (
+                        float(validation_sharpe)
+                        if np.isfinite(validation_sharpe)
+                        else None
                     ),
-                    "validation_trade_count": total_trades,
+                    "status": "eligible" if eligible else "eliminated",
+                    "validation_round_trip_count": total_trades,
+                    "validation_mean_market_exposure": mean_exposure,
                     "eliminated_reason": (
-                        None if total_trades > 0 else "no_trades"
+                        None
+                        if eligible
+                        else (
+                            "insufficient_round_trips"
+                            if total_trades < minimum_round_trips
+                            else "insufficient_market_exposure"
+                            if mean_exposure
+                            < body.protocol.minimum_market_exposure
+                            else "no_finite_objective"
+                        )
                     ),
                 }
             )
@@ -646,13 +771,21 @@ def _run_walk_forward_research(
                     "fold": fold.snapshot(),
                     "candidate": candidates[winner_index].to_dict(),
                     "validation_objective": float(row[winner_index]),
-                    "test": test_metrics,
+                    "test": _comparison_view(test_metrics),
                 }
             )
-        medians = np.nanmedian(validation_matrix, axis=0)
+        medians = np.asarray(
+            [
+                float(np.nanmedian(column))
+                if np.isfinite(column).any()
+                else float("nan")
+                for column in validation_matrix.T
+            ]
+        )
         if not np.isfinite(medians).any():
             raise ValueError(
-                "All preregistered candidates were eliminated for no trades"
+                "All preregistered candidates were eliminated by the "
+                "preregistered trade/exposure requirements"
             )
         final_index = int(np.nanargmax(medians))
         final_candidate = candidates[final_index]
@@ -671,9 +804,9 @@ def _run_walk_forward_research(
             trial_returns[final_index], axis=0
         ).sort_index()
         trial_sharpes = [
-            row["median_validation_objective"]
+            row["validation_sharpe"]
             for row in candidate_rows
-            if row["median_validation_objective"] is not None
+            if row["validation_sharpe"] is not None
         ]
         aligned_trials = pd.concat(
             [
@@ -684,43 +817,82 @@ def _run_walk_forward_research(
             ],
             axis=1,
         )
-        prices = pd.DataFrame(
-            {
-                symbol: frame.set_index("date")["close"]
-                for symbol, frame in frames.items()
-            }
-        ).loc[
-            lambda value: (
-                value.index >= pd.Timestamp(protocol.locked_oos_start)
-            )
-        ]
-        baselines = baseline_metric_helpers(
-            prices, moving_average_window=200
+        comparison_options = {
+            "buy_and_hold": body.options.model_copy(
+                update={
+                    "timing_style": "buy_and_hold",
+                    "position_sizing": "full",
+                    "cooldown_sessions": 0,
+                }
+            ),
+            "ma_200": body.options.model_copy(
+                update={
+                    "timing_style": "ma_200",
+                    "position_sizing": "full",
+                    "cooldown_sessions": 0,
+                }
+            ),
+            "trend": body.options.model_copy(
+                update={"timing_style": "trend"}
+            ),
+            "rsi_bollinger": final_options.model_copy(
+                update={"timing_style": "rsi_bollinger"}
+            ),
+            "factor_dual": body.options.model_copy(
+                update={"timing_style": "factor_dual"}
+            ),
+            "regime_reversion_legacy": final_options.model_copy(
+                update={
+                    "timing_style": "regime_reversion_legacy",
+                    "regime_entry_mode": "legacy_all",
+                }
+            ),
+            "regime_reversion": final_options,
+            "donchian_atr": body.options.model_copy(
+                update={"timing_style": "donchian_atr"}
+            ),
+            "ma_crossover_atr": body.options.model_copy(
+                update={"timing_style": "ma_crossover_atr"}
+            ),
+        }
+        comparison_metrics: dict[str, dict[str, Any]] = {}
+        for name, model_options in comparison_options.items():
+            metrics = final_metrics
+            if name != "regime_reversion":
+                metrics, _ = _evaluate_regime_segment(
+                    frames, oos_dates, model_options
+                )
+            comparison_metrics[name] = _comparison_view(metrics)
+        buy_hold_return = comparison_metrics["buy_and_hold"].get(
+            "total_return"
         )
-        factor_dual_options = body.options.model_copy(
-            update={"timing_style": "factor_dual"}
-        )
-        factor_dual_metrics, _ = _evaluate_regime_segment(
-            frames, oos_dates, factor_dual_options
-        )
-        rsi_bb_options = final_options.model_copy(
-            update={
-                "entry_factor_weight": 0.0,
-                "entry_rsi_weight": 0.5,
-                "entry_bollinger_weight": 0.5,
-                "entry_regime_weight": 0.0,
-                "exit_factor_weight": 0.0,
-                "exit_rsi_weight": 0.5,
-                "exit_bollinger_weight": 0.5,
-                "exit_regime_weight": 0.0,
-            }
-        )
-        rsi_bb_metrics, _ = _evaluate_regime_segment(
-            frames, oos_dates, rsi_bb_options
-        )
+        if buy_hold_return is not None:
+            for metrics in comparison_metrics.values():
+                total_return = metrics.get("total_return")
+                metrics["excess_return"] = (
+                    float(total_return) - float(buy_hold_return)
+                    if total_return is not None
+                    else None
+                )
         perturbations = parameter_perturbations(
             dict(final_candidate.parameters)
         )
+        perturbation_scores: list[float] = []
+        for parameters in perturbations:
+            options = _candidate_options(
+                body.options, dict(parameters)
+            )
+            scores: list[float] = []
+            for fold in folds:
+                metrics, _ = _evaluate_regime_segment(
+                    frames, fold.validation_dates, options
+                )
+                if metrics.get("available") and np.isfinite(
+                    float(metrics.get("objective", np.nan))
+                ):
+                    scores.append(float(metrics["objective"]))
+            if scores:
+                perturbation_scores.append(float(np.median(scores)))
         result = {
             "protocol": protocol.snapshot().to_dict(),
             "protocol_hash": protocol.protocol_hash,
@@ -729,6 +901,8 @@ def _run_walk_forward_research(
             "selected_candidate": final_candidate.to_dict(),
             "locked_oos": final_metrics,
             "diagnostics": {
+                "candidate_count": len(candidates),
+                "fold_count": len(folds),
                 "walk_forward_efficiency": walk_forward_efficiency(
                     [item["validation_objective"] for item in winners],
                     [
@@ -737,26 +911,48 @@ def _run_walk_forward_research(
                         if item["test"].get("available")
                     ],
                 ),
-                "deflated_sharpe": {
-                    "available": False,
-                    "reason": (
-                        "Per-candidate Sharpe trials were not retained; "
-                        "objective values cannot be substituted for Sharpe."
-                    ),
-                    "number_of_trials": len(candidates),
-                },
+                "deflated_sharpe": deflated_sharpe_ratio(
+                    final_returns,
+                    trial_sharpes=trial_sharpes,
+                    number_of_trials=len(candidates),
+                ),
                 "pbo": cscv_pbo(aligned_trials),
                 "perturbation_count": len(perturbations),
+                "perturbation_stability": perturbation_stability(
+                    float(medians[final_index]),
+                    perturbation_scores,
+                ),
+                "evidence_sufficient": (
+                    len(body.symbols) >= 8
+                    and bool(
+                        comparison_metrics.get(
+                            "regime_reversion", {}
+                        ).get("evidence_sufficient")
+                    )
+                ),
             },
-            "model_comparison": {
-                "buy_and_hold": baselines["equal_weight_buy_and_hold"],
-                "ma_200": baselines["equal_weight_moving_average"],
-                "regime_reversion": _comparison_view(final_metrics),
-                "rsi_bollinger": _comparison_view(rsi_bb_metrics),
-                "factor_dual": _comparison_view(factor_dual_metrics),
+            "model_comparison": comparison_metrics,
+            "preregistered_model_candidates": {
+                "regime_reversion": len(candidates),
+                "buy_and_hold": 1,
+                "ma_200": 1,
+                "trend": 1,
+                "rsi_bollinger": 1,
+                "factor_dual": 1,
+                "regime_reversion_legacy": 1,
+                "donchian_atr": 1,
+                "ma_crossover_atr": 1,
             },
             "warnings": [
                 "Only three common years are used; evidence is limited.",
+                *(
+                    [
+                        "Fewer than eight representative symbols were "
+                        "available; cross-symbol evidence is insufficient."
+                    ]
+                    if len(body.symbols) < 8
+                    else []
+                ),
                 SURVIVORSHIP_WARNING,
                 QFQ_REVISION_WARNING,
             ],
@@ -796,93 +992,6 @@ def _run_walk_forward_research(
         storage.update_walk_forward_job(
             job_id, status="failed", error=str(exc), progress=1.0
         )
-
-
-def _augment_walk_forward_comparison(
-    storage: Storage, provider: DataProvider, job_id: str
-) -> dict[str, Any]:
-    job = storage.get_walk_forward_job(job_id)
-    if job is None or job["status"] != "completed":
-        raise ValueError("Completed walk-forward job is required")
-    body = TimingWalkForwardRequest.model_validate(job["request"])
-    result = dict(job["result"])
-    protocol = result["protocol"]
-    frames = _build_walk_forward_base_frames(
-        storage,
-        provider,
-        body,
-        date.fromisoformat(protocol["evaluation_start"]),
-        date.fromisoformat(protocol["evaluation_end"]),
-    )
-    common = pd.DatetimeIndex(
-        pd.to_datetime(next(iter(frames.values()))["date"])
-    )
-    for frame in list(frames.values())[1:]:
-        common = common.intersection(pd.to_datetime(frame["date"]))
-    oos_dates = tuple(
-        common[
-            (common >= pd.Timestamp(protocol["locked_oos_start"]))
-            & (common <= pd.Timestamp(protocol["locked_oos_end"]))
-        ]
-    )
-    selected = result["selected_candidate"]["parameters"]
-    regime_options = _candidate_options(body.options, selected)
-    regime_metrics, _ = _evaluate_regime_segment(
-        frames, oos_dates, regime_options
-    )
-    factor_metrics, _ = _evaluate_regime_segment(
-        frames,
-        oos_dates,
-        body.options.model_copy(update={"timing_style": "factor_dual"}),
-    )
-    rsi_bb_options = regime_options.model_copy(
-        update={
-            "entry_factor_weight": 0.0,
-            "entry_rsi_weight": 0.5,
-            "entry_bollinger_weight": 0.5,
-            "entry_regime_weight": 0.0,
-            "exit_factor_weight": 0.0,
-            "exit_rsi_weight": 0.5,
-            "exit_bollinger_weight": 0.5,
-            "exit_regime_weight": 0.0,
-        }
-    )
-    rsi_metrics, _ = _evaluate_regime_segment(
-        frames, oos_dates, rsi_bb_options
-    )
-    prices = pd.DataFrame(
-        {
-            symbol: frame.set_index("date")["close"]
-            for symbol, frame in frames.items()
-        }
-    ).loc[lambda value: value.index.isin(oos_dates)]
-    baselines = baseline_metric_helpers(prices, moving_average_window=200)
-    result["model_comparison"] = {
-        "buy_and_hold": baselines["equal_weight_buy_and_hold"],
-        "ma_200": baselines["equal_weight_moving_average"],
-        "rsi_bollinger": _comparison_view(rsi_metrics),
-        "factor_dual": _comparison_view(factor_metrics),
-        "regime_reversion": _comparison_view(regime_metrics),
-    }
-    if job.get("report_path"):
-        Path(job["report_path"]).write_text(
-            json.dumps(
-                json_safe(result),
-                ensure_ascii=False,
-                indent=2,
-                allow_nan=False,
-            ),
-            encoding="utf-8",
-        )
-    storage.update_walk_forward_job(
-        job_id,
-        result=json_safe(result),
-        summary={
-            **job["summary"],
-            "model_comparison": result["model_comparison"],
-        },
-    )
-    return result
 
 
 def _multifactor_effective_signature(
@@ -1797,7 +1906,12 @@ def create_app(
         entry_factor = CompositeFactor(entry_config)
         exit_factor = CompositeFactor(exit_config)
         if (
-            options.timing_style in {"factor_dual", "regime_reversion"}
+            options.timing_style
+            in {
+                "factor_dual",
+                "regime_reversion",
+                "regime_reversion_legacy",
+            }
             and _multifactor_effective_signature(entry_config)
             == _multifactor_effective_signature(exit_config)
         ):
@@ -1814,10 +1928,22 @@ def create_app(
                 entry_factor.metadata.lookback,
                 exit_factor.metadata.lookback,
             )
-            if options.timing_style in {"factor_dual", "regime_reversion"}
+            if options.timing_style
+            in {
+                "factor_dual",
+                "regime_reversion",
+                "regime_reversion_legacy",
+            }
             else factor.metadata.lookback
         )
-        if options.timing_style == "regime_reversion":
+        required_lookback = max(
+            required_lookback,
+            options.atr_period,
+        )
+        if options.timing_style in {
+            "regime_reversion",
+            "regime_reversion_legacy",
+        }:
             required_lookback = max(
                 required_lookback,
                 options.ma_period + options.ma_slope_period,
@@ -1829,6 +1955,27 @@ def create_app(
                 required_lookback,
                 options.rsi_period + 1,
                 options.bollinger_window,
+            )
+        elif options.timing_style == "donchian_atr":
+            required_lookback = max(
+                required_lookback,
+                options.donchian_entry_window + 1,
+                options.donchian_exit_window + 1,
+                (
+                    options.ma_period + options.ma_slope_period
+                    if options.donchian_trend_filter
+                    else 0
+                ),
+            )
+        elif options.timing_style == "ma_crossover_atr":
+            required_lookback = max(
+                required_lookback,
+                options.ma_slow_period + options.ma_slope_period,
+            )
+        elif options.timing_style == "ma_200":
+            required_lookback = max(
+                required_lookback,
+                options.ma_period,
             )
         panel, missing = _load_panel(
             application.state.storage,
@@ -1855,7 +2002,11 @@ def create_app(
             body.adjust,
         )
         try:
-            if options.timing_style in {"factor_dual", "regime_reversion"}:
+            if options.timing_style in {
+                "factor_dual",
+                "regime_reversion",
+                "regime_reversion_legacy",
+            }:
                 entry_details = _prefix_timing_details(
                     entry_factor.compute_details(panel),
                     entry_config,
@@ -1971,111 +2122,12 @@ def create_app(
             )
         else:
             signal_frame["trend_score"] = signal_frame["composite_score"]
-        if options.timing_style == "regime_reversion":
-            signal_frame["ma_200"] = moving_average(
-                signal_frame, options.ma_period
-            )
-            signal_frame["ma_slope_20"] = moving_average_slope(
-                signal_frame,
-                options.ma_period,
-                slope_periods=options.ma_slope_period,
-            )
-            signal_frame["distance_to_ma_200"] = (
-                distance_to_moving_average(
-                    signal_frame, options.ma_period
-                )
-            )
-            signal_frame["rsi_14"] = wilder_rsi(
-                signal_frame, options.rsi_period
-            )
-            bands = bollinger_bands(
-                signal_frame,
-                options.bollinger_window,
-                standard_deviations=options.bollinger_std,
-            )
-            for source, target in (
-                ("mid", "bollinger_mid_20"),
-                ("upper", "bollinger_upper_20"),
-                ("lower", "bollinger_lower_20"),
-                ("percent_b", "bollinger_percent_b_20"),
-                ("bandwidth", "bollinger_bandwidth_20"),
-            ):
-                signal_frame[target] = bands[source]
-            close = pd.to_numeric(signal_frame["close"], errors="coerce")
-            ma_value = pd.to_numeric(signal_frame["ma_200"], errors="coerce")
-            ma_slope = pd.to_numeric(
-                signal_frame["ma_slope_20"], errors="coerce"
-            )
-            signal_frame["market_regime"] = np.select(
-                [
-                    close.gt(ma_value) & ma_slope.gt(0),
-                    close.lt(ma_value) & ma_slope.lt(0),
-                ],
-                ["uptrend", "downtrend"],
-                default="sideways",
-            )
-            rsi_value = pd.to_numeric(signal_frame["rsi_14"], errors="coerce")
-            percent_b = pd.to_numeric(
-                signal_frame["bollinger_percent_b_20"], errors="coerce"
-            )
-            entry_rsi = (
-                (options.rsi_oversold + 10.0 - rsi_value) / 10.0
-            ).clip(-3, 3)
-            entry_bollinger = ((0.2 - percent_b) / 0.2).clip(-3, 3)
-            entry_regime = signal_frame["market_regime"].map(
-                {"uptrend": 1.0, "sideways": 0.25, "downtrend": -1.0}
-            )
-            exit_rsi = (
-                (rsi_value - (options.rsi_overbought - 10.0)) / 10.0
-            ).clip(-3, 3)
-            exit_bollinger = ((percent_b - 0.8) / 0.2).clip(-3, 3)
-            exit_regime = signal_frame["market_regime"].map(
-                {"uptrend": -0.5, "sideways": 0.2, "downtrend": 1.0}
-            )
-            entry_denominator = (
-                options.entry_factor_weight
-                + options.entry_rsi_weight
-                + options.entry_bollinger_weight
-                + options.entry_regime_weight
-            )
-            exit_denominator = (
-                options.exit_factor_weight
-                + options.exit_rsi_weight
-                + options.exit_bollinger_weight
-                + options.exit_regime_weight
-            )
-            signal_frame["entry_score_final"] = (
-                options.entry_factor_weight * signal_frame["entry_score"]
-                + options.entry_rsi_weight * entry_rsi
-                + options.entry_bollinger_weight * entry_bollinger
-                + options.entry_regime_weight * entry_regime
-            ) / entry_denominator
-            signal_frame["exit_score_final"] = (
-                options.exit_factor_weight * signal_frame["exit_score"]
-                + options.exit_rsi_weight * exit_rsi
-                + options.exit_bollinger_weight * exit_bollinger
-                + options.exit_regime_weight * exit_regime
-            ) / exit_denominator
-            signal_frame["composite_score"] = (
-                signal_frame["entry_score_final"]
-                - signal_frame["exit_score_final"]
-            ) / 2.0
-            signal_frame["trend_score"] = entry_regime
-            for name, values in (
-                ("regime_entry_factor", signal_frame["entry_score"]),
-                ("regime_entry_rsi", entry_rsi),
-                ("regime_entry_bollinger", entry_bollinger),
-                ("regime_entry_market", entry_regime),
-                ("regime_exit_factor", signal_frame["exit_score"]),
-                ("regime_exit_rsi", exit_rsi),
-                ("regime_exit_bollinger", exit_bollinger),
-                ("regime_exit_market", exit_regime),
-            ):
-                signal_frame[f"contribution_{name}"] = values
-        elif options.timing_style == "rsi_bollinger":
+        if options.timing_style == "rsi_bollinger":
             signal_frame["entry_score"] = 0.0
             signal_frame["exit_score"] = 0.0
-            signal_frame = _attach_regime_columns(signal_frame, options)
+        signal_frame = _attach_timing_indicator_columns(
+            signal_frame, options
+        )
         signal_frame = signal_frame[
             signal_frame["date"].ge(pd.Timestamp(body.start_date))
             & signal_frame["date"].le(pd.Timestamp(body.end_date))
@@ -2083,48 +2135,7 @@ def create_app(
         try:
             result = run_timing(
                 signal_frame,
-                TimingConfig(
-                    timing_style=options.timing_style,
-                    buy_threshold=options.buy_threshold,
-                    sell_threshold=options.sell_threshold,
-                    entry_score_threshold=options.entry_score_threshold,
-                    exit_score_threshold=options.exit_score_threshold,
-                    setup_expiry_sessions=options.setup_expiry_sessions,
-                    entry_max_price_position=options.entry_max_price_position,
-                    exit_min_price_position=options.exit_min_price_position,
-                    ma_period=options.ma_period,
-                    ma_slope_period=options.ma_slope_period,
-                    rsi_period=options.rsi_period,
-                    rsi_oversold=options.rsi_oversold,
-                    rsi_overbought=options.rsi_overbought,
-                    bollinger_window=options.bollinger_window,
-                    bollinger_std=options.bollinger_std,
-                    entry_factor_weight=options.entry_factor_weight,
-                    entry_rsi_weight=options.entry_rsi_weight,
-                    entry_bollinger_weight=options.entry_bollinger_weight,
-                    entry_regime_weight=options.entry_regime_weight,
-                    exit_factor_weight=options.exit_factor_weight,
-                    exit_rsi_weight=options.exit_rsi_weight,
-                    exit_bollinger_weight=options.exit_bollinger_weight,
-                    exit_regime_weight=options.exit_regime_weight,
-                    low_zone_threshold=options.low_zone_threshold,
-                    low_recovery_threshold=options.low_recovery_threshold,
-                    high_reversal_threshold=options.high_reversal_threshold,
-                    high_zone_threshold=options.high_zone_threshold,
-                    fixed_stop=options.fixed_stop,
-                    trailing_stop=options.trailing_stop,
-                    max_holding_sessions=options.max_holding_sessions,
-                    minimum_holding_sessions=options.minimum_holding_sessions,
-                    cooldown_sessions=options.cooldown_sessions,
-                    initial_capital=options.initial_capital,
-                    commission_rate=options.commission_rate,
-                    minimum_commission=options.minimum_commission,
-                    slippage=options.slippage_rate,
-                    minimum_trade_notional=options.minimum_trade_notional,
-                    lot_size=options.lot_size,
-                    is_etf=body.is_etf,
-                    max_stale_sessions=options.max_stale_sessions,
-                ),
+                _timing_config_from_options(options, body.is_etf),
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -2178,42 +2189,84 @@ def create_app(
                 "symbol": body.symbol,
                 "name": instrument_name,
                 "factor_name": (
-                    factor.metadata.name
-                    if options.timing_style not in {"factor_dual", "regime_reversion"}
+                    options.timing_style
+                    if options.timing_style
+                    in {"donchian_atr", "ma_crossover_atr"}
+                    else factor.metadata.name
+                    if options.timing_style
+                    not in {
+                        "factor_dual",
+                        "regime_reversion",
+                        "regime_reversion_legacy",
+                    }
                     else (
                         f"{options.timing_style}_{entry_config.config_id}_"
                         f"{exit_config.config_id}"
                     )
                 ),
                 "factor_name_zh": (
-                    config.name
-                    if options.timing_style not in {"factor_dual", "regime_reversion"}
+                    "Donchian突破 + ATR"
+                    if options.timing_style == "donchian_atr"
+                    else "双均线趋势 + ATR"
+                    if options.timing_style == "ma_crossover_atr"
+                    else config.name
+                    if options.timing_style
+                    not in {
+                        "factor_dual",
+                        "regime_reversion",
+                        "regime_reversion_legacy",
+                    }
                     else (
                         "综合趋势反转"
-                        if options.timing_style == "regime_reversion"
+                        if options.timing_style
+                        in {
+                            "regime_reversion",
+                            "regime_reversion_legacy",
+                        }
                         else "智能双评分择时"
                     )
                 ),
                 "config_id": config.config_id,
                 "config_snapshot": config.snapshot(),
+                "timing_options_snapshot": options.model_dump(mode="json"),
                 "entry_config_id": (
                     entry_config.config_id
-                    if options.timing_style in {"factor_dual", "regime_reversion"}
+                    if options.timing_style
+                    in {
+                        "factor_dual",
+                        "regime_reversion",
+                        "regime_reversion_legacy",
+                    }
                     else None
                 ),
                 "entry_config_snapshot": (
                     entry_config.snapshot()
-                    if options.timing_style in {"factor_dual", "regime_reversion"}
+                    if options.timing_style
+                    in {
+                        "factor_dual",
+                        "regime_reversion",
+                        "regime_reversion_legacy",
+                    }
                     else None
                 ),
                 "exit_config_id": (
                     exit_config.config_id
-                    if options.timing_style in {"factor_dual", "regime_reversion"}
+                    if options.timing_style
+                    in {
+                        "factor_dual",
+                        "regime_reversion",
+                        "regime_reversion_legacy",
+                    }
                     else None
                 ),
                 "exit_config_snapshot": (
                     exit_config.snapshot()
-                    if options.timing_style in {"factor_dual", "regime_reversion"}
+                    if options.timing_style
+                    in {
+                        "factor_dual",
+                        "regime_reversion",
+                        "regime_reversion_legacy",
+                    }
                     else None
                 ),
                 "benchmark": body.benchmark,
@@ -2227,7 +2280,11 @@ def create_app(
             config.name,
             config.snapshot(),
         )
-        if options.timing_style in {"factor_dual", "regime_reversion"}:
+        if options.timing_style in {
+            "factor_dual",
+            "regime_reversion",
+            "regime_reversion_legacy",
+        }:
             application.state.storage.save_multifactor_config(
                 entry_config.config_id,
                 entry_config.name,
@@ -2251,9 +2308,26 @@ def create_app(
     def create_timing_walk_forward(
         body: TimingWalkForwardRequest,
     ) -> dict[str, Any]:
+        request_payload = body.model_dump(mode="json")
+        existing = (
+            application.state.storage.find_completed_walk_forward_job(
+                request_payload
+            )
+        )
+        if existing is not None:
+            return json_safe(
+                {
+                    **existing,
+                    "reused_locked_oos": True,
+                    "message": (
+                        "An identical preregistered protocol already "
+                        "evaluated locked OOS; the stored result was reused."
+                    ),
+                }
+            )
         job_id = uuid4().hex
         application.state.storage.create_walk_forward_job(
-            job_id, body.model_dump(mode="json")
+            job_id, request_payload
         )
         _WALK_FORWARD_EXECUTOR.submit(
             _run_walk_forward_research,

@@ -433,6 +433,41 @@ def test_api_smoke_uses_cached_synthetic_data_without_network(
     assert rsi_bollinger_json["summary"]["timing_style"] == "rsi_bollinger"
     rsi_bollinger_run_id = rsi_bollinger_json["id"]
 
+    cta_run_ids: list[str] = []
+    for style, expected_column in (
+        ("donchian_atr", "donchian_upper"),
+        ("ma_crossover_atr", "ma_fast"),
+    ):
+        cta_response = client.post(
+            "/api/timing/backtests",
+            json={
+                "symbol": symbols[0],
+                "config": timing_config,
+                "options": {
+                    "timing_style": style,
+                    "donchian_entry_window": 20,
+                    "donchian_exit_window": 10,
+                    "ma_fast_period": 10,
+                    "ma_slow_period": 20,
+                    "ma_slope_period": 5,
+                    "atr_period": 10,
+                },
+                "start_date": pd.Timestamp(dates[25]).date().isoformat(),
+                "end_date": pd.Timestamp(dates[-1]).date().isoformat(),
+                "adjust": "qfq",
+                "benchmark": "CSI300",
+                "is_etf": False,
+            },
+        )
+        assert cta_response.status_code == 200, cta_response.text
+        cta_json = cta_response.json()
+        assert cta_json["summary"]["timing_style"] == style
+        assert any(
+            row[expected_column] is not None
+            for row in cta_json["score_trace"]
+        )
+        cta_run_ids.append(cta_json["id"])
+
     single_symbol_backtest = client.post(
         "/api/backtests",
         json={
@@ -495,7 +530,7 @@ def test_api_smoke_uses_cached_synthetic_data_without_network(
     assert "T+1" in backtest_json["execution_policy"]
     assert backtest_json["factor_name"] == "momentum_20"
     assert backtest_json["equity_curve"][0]["benchmark"] is not None
-    assert backtest_json["trades"][0]["market_close"] is not None
+    assert backtest_json["trades"][0]["market_open"] is not None
     assert any(
         "Historical ST status" in warning
         for warning in backtest_json["warnings"]
@@ -504,8 +539,8 @@ def test_api_smoke_uses_cached_synthetic_data_without_network(
 
     listing = client.get("/api/backtests")
     assert listing.status_code == 200
-    assert listing.json()["count"] == 7
-    assert len(listing.json()["backtests"]) == 7
+    assert listing.json()["count"] == 9
+    assert len(listing.json()["backtests"]) == 9
     run_id = backtest_json["id"]
     detail = client.get(f"/api/backtests/{run_id}")
     assert detail.status_code == 200
@@ -530,6 +565,8 @@ def test_api_smoke_uses_cached_synthetic_data_without_network(
     assert client.delete(f"/api/backtests/{factor_dual_run_id}").status_code == 200
     assert client.delete(f"/api/backtests/{regime_run_id}").status_code == 200
     assert client.delete(f"/api/backtests/{rsi_bollinger_run_id}").status_code == 200
+    for cta_run_id in cta_run_ids:
+        assert client.delete(f"/api/backtests/{cta_run_id}").status_code == 200
     assert client.get("/api/backtests").json()["count"] == 0
 
 

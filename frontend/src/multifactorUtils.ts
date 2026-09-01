@@ -152,8 +152,8 @@ export function createDefaultMultiFactorConfig(
     name: mode === 'time_series' ? '单标的择时组合' : '多因子选股组合',
     mode,
     components: DEFAULT_COMPONENTS.map((component) => ({ ...component })),
-    rolling_window: 252,
-    rolling_min_periods: 120,
+    rolling_window: mode === 'time_series' ? 126 : 252,
+    rolling_min_periods: mode === 'time_series' ? 60 : 120,
     zscore_clip: 3,
     metadata: { weight_source: 'research_default_not_optimized' },
   }
@@ -186,8 +186,8 @@ export function createSmartEntryConfig(): MultiFactorConfig {
       smartComponent('intraday_strength_20', 0.15, 1),
       smartComponent('amount_surprise_20', 0.1, 1),
     ],
-    rolling_window: 252,
-    rolling_min_periods: 120,
+    rolling_window: 126,
+    rolling_min_periods: 60,
     zscore_clip: 3,
     metadata: {
       score_role: 'entry',
@@ -208,8 +208,8 @@ export function createSmartExitConfig(): MultiFactorConfig {
       smartComponent('volume_price_corr_20', 0.15, -1),
       smartComponent('atr_ratio_20', 0.1, 1),
     ],
-    rolling_window: 252,
-    rolling_min_periods: 120,
+    rolling_window: 126,
+    rolling_min_periods: 60,
     zscore_clip: 3,
     metadata: {
       score_role: 'exit',

@@ -7,8 +7,10 @@ import pytest
 from app.factors.base import FactorUnavailableError, build_factor_observations
 from app.factors.builtin import BUILTIN_FACTORS, MA200Factor
 from app.timing.indicators import (
+    average_true_range,
     bollinger_bands,
     distance_to_moving_average,
+    donchian_channels,
     moving_average,
     moving_average_slope,
     wilder_rsi,
@@ -125,6 +127,37 @@ def test_indicators_are_unchanged_when_future_rows_are_truncated() -> None:
     pd.testing.assert_frame_equal(
         bollinger_bands(bars, 3).reindex(truncated.index),
         bollinger_bands(truncated, 3),
+    )
+
+
+def test_donchian_excludes_current_bar_and_atr_is_causal() -> None:
+    bars = pd.DataFrame(
+        {
+            "symbol": "AAA",
+            "date": pd.bdate_range("2026-01-05", periods=7),
+            "open": [1, 2, 3, 4, 5, 6, 7],
+            "high": [2, 3, 4, 5, 6, 7, 8],
+            "low": [0, 1, 2, 3, 4, 5, 6],
+            "close": [1, 2, 3, 4, 5, 6, 7],
+        }
+    )
+    channels = donchian_channels(bars, entry_window=3, exit_window=2)
+
+    assert channels["upper"].iloc[3] == pytest.approx(4.0)
+    assert channels["lower"].iloc[2] == pytest.approx(0.0)
+    atr = average_true_range(bars, 3)
+    assert atr.iloc[:2].isna().all()
+    assert atr.iloc[2:].eq(2.0).all()
+
+    prefix = bars.iloc[:5].copy()
+    pd.testing.assert_frame_equal(
+        channels.iloc[:5],
+        donchian_channels(prefix, entry_window=3, exit_window=2),
+    )
+    pd.testing.assert_series_equal(
+        atr.iloc[:5],
+        average_true_range(prefix, 3),
+        check_names=False,
     )
 
 

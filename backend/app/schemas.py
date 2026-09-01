@@ -184,8 +184,12 @@ class TimingOptions(StrictModel):
         "mean_reversion",
         "factor_dual",
         "regime_reversion",
+        "regime_reversion_legacy",
         "rsi_bollinger",
-        "rsi_bollinger",
+        "donchian_atr",
+        "ma_crossover_atr",
+        "buy_and_hold",
+        "ma_200",
     ] = "trend"
     buy_threshold: float = 0.7
     sell_threshold: float = 0.0
@@ -209,14 +213,26 @@ class TimingOptions(StrictModel):
     exit_rsi_weight: float = Field(default=0.20, ge=0)
     exit_bollinger_weight: float = Field(default=0.20, ge=0)
     exit_regime_weight: float = Field(default=0.20, ge=0)
+    regime_entry_mode: Literal[
+        "legacy_all", "confirmation_count"
+    ] = "confirmation_count"
+    regime_confirmation_required: int = Field(default=2, ge=1, le=3)
     low_zone_threshold: float = Field(default=0.20, ge=0, le=1)
     low_recovery_threshold: float = Field(default=0.25, ge=0, le=1)
     high_reversal_threshold: float = Field(default=0.75, ge=0, le=1)
     high_zone_threshold: float = Field(default=0.80, ge=0, le=1)
     fixed_stop: float = Field(default=0.08, ge=0, lt=1)
     trailing_stop: float = Field(default=0.10, ge=0, lt=1)
+    donchian_entry_window: int = Field(default=55, ge=10, le=252)
+    donchian_exit_window: int = Field(default=20, ge=5, le=252)
+    donchian_trend_filter: bool = False
+    ma_fast_period: int = Field(default=20, ge=2, le=252)
+    ma_slow_period: int = Field(default=60, ge=5, le=500)
+    atr_period: int = Field(default=20, ge=2, le=252)
+    atr_stop_multiple: float = Field(default=2.0, gt=0, le=10)
+    atr_trailing_multiple: float = Field(default=3.0, gt=0, le=20)
     max_holding_sessions: int = Field(default=60, ge=1, le=2000)
-    minimum_holding_sessions: int = Field(default=2, ge=1, le=252)
+    minimum_holding_sessions: int = Field(default=0, ge=0, le=252)
     cooldown_sessions: int = Field(default=5, ge=0, le=252)
     initial_capital: float = Field(default=1_000_000.0, gt=0)
     commission_rate: float = Field(default=0.0003, ge=0, lt=1)
@@ -224,6 +240,10 @@ class TimingOptions(StrictModel):
     slippage_rate: float = Field(default=0.0005, ge=0, lt=1)
     minimum_trade_notional: float = Field(default=1_000.0, ge=0)
     lot_size: int = Field(default=100, ge=1, le=10000)
+    position_sizing: Literal["full", "fixed", "atr_risk"] = "atr_risk"
+    fixed_position_fraction: float = Field(default=0.50, gt=0, le=1)
+    risk_per_trade: float = Field(default=0.01, gt=0, le=1)
+    max_position_fraction: float = Field(default=0.50, gt=0, le=1)
     max_stale_sessions: int = Field(default=20, ge=0, le=252)
 
     @model_validator(mode="after")
@@ -248,7 +268,14 @@ class TimingOptions(StrictModel):
                 "factor-dual thresholds must satisfy low_zone < "
                 "low_recovery < entry_max_position < exit_min_position"
             )
-        if self.timing_style == "regime_reversion":
+        if self.ma_fast_period >= self.ma_slow_period:
+            raise ValueError(
+                "ma_fast_period must be less than ma_slow_period"
+            )
+        if self.timing_style in {
+            "regime_reversion",
+            "regime_reversion_legacy",
+        }:
             if not (
                 self.low_zone_threshold
                 < self.low_recovery_threshold
@@ -301,6 +328,12 @@ class TimingWalkForwardProtocolRequest(StrictModel):
     test_months: int = Field(default=2, ge=1, le=6)
     purge_sessions: int = Field(default=5, ge=0, le=60)
     embargo_sessions: int = Field(default=5, ge=0, le=60)
+    minimum_round_trips_per_symbol: int = Field(
+        default=1, ge=1, le=20
+    )
+    minimum_market_exposure: float = Field(
+        default=0.02, ge=0, le=1
+    )
 
 
 class TimingWalkForwardRequest(StrictModel, SymbolListMixin):

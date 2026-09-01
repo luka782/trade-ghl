@@ -195,8 +195,8 @@ def _config(template: str, mode: str) -> MultiFactorConfig:
         name=TEMPLATE_LABELS[template],
         components=base.components,
         mode=base.mode,
-        rolling_window=252,
-        rolling_min_periods=120,
+        rolling_window=126 if mode == "time_series" else 252,
+        rolling_min_periods=60 if mode == "time_series" else 120,
         zscore_clip=3.0,
         metadata={
             "template": template,
@@ -512,7 +512,7 @@ def _timing_validation(
                     fixed_stop=0.08,
                     trailing_stop=0.10,
                     max_holding_sessions=60,
-                    minimum_holding_sessions=2,
+                    minimum_holding_sessions=0,
                     cooldown_sessions=5,
                     initial_capital=1_000_000,
                     commission_rate=0.0003,
@@ -696,7 +696,7 @@ def run(
                 "股票池和ETF池按当前可得名单回溯，仍有幸存者偏差。",
                 "历史ST区间、IPO及重新上市无涨跌停窗口仍不完整。",
                 "前复权历史可能因后续公司行动重述；成交约束使用不复权行情。",
-                "日线收盘成交不包含盘口深度，涨跌停收盘价按保守不可成交处理。",
+                "日线开盘成交不包含盘口深度，涨跌停开盘价按保守不可成交处理。",
             ],
         },
     )

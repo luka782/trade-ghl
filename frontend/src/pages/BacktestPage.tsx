@@ -118,13 +118,14 @@ function simulatedTime(
   record: Record<string, unknown>,
   explicitKeys: readonly string[],
   dateKeys: readonly string[],
+  fallbackTime = '09:30:00',
 ): string {
   const explicit = pickString(record, explicitKeys)
   if (explicit) {
     return `${explicit.replace('T', ' ').replace('+08:00', '')}（模拟）`
   }
   const date = pickString(record, dateKeys)
-  return date ? `${date.slice(0, 10)} 15:00:00（收盘模拟）` : '—'
+  return date ? `${date.slice(0, 10)} ${fallbackTime}（模拟）` : '—'
 }
 
 function blockedReasonLabel(reason: string | null): string {
@@ -134,6 +135,7 @@ function blockedReasonLabel(reason: string | null): string {
     sealed_limit_down: '跌停，无法卖出',
     missing_bar: '当日缺少行情',
     missing_close: '当日缺少有效收盘价',
+    missing_open: '当日缺少有效开盘价',
     insufficient_cash: '现金不足',
     t_plus_one: 'A股 T+1 限制',
   }
@@ -186,7 +188,7 @@ function TradesTable({ rows }: { rows: unknown[] }) {
   return (
     <>
       <div className="trade-ledger-note">
-        日线模型只模拟 T+1 收盘成交，时间统一标记为 15:00；股数和手数按名义金额与不复权成交价折算，尚未执行
+        日线信号在 T 日收盘生成，统一按 T+1 开盘成交；股数和手数按名义金额与不复权成交价折算，尚未执行
         100 股整数手取整。
       </div>
       <div className="trade-ledger-toolbar">
@@ -267,6 +269,7 @@ function TradesTable({ rows }: { rows: unknown[] }) {
                       record,
                       ['signal_time'],
                       ['signal_date'],
+                      '15:00:00',
                     )}
                   </td>
                   <td className="mono cell-strong">{symbol}</td>

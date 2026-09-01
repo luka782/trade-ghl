@@ -48,6 +48,7 @@ def _panel(
     closes: dict[str, list[float]],
     signals: dict[str, list[float]],
     volumes: dict[str, list[float]] | None = None,
+    opens: dict[str, list[float]] | None = None,
 ) -> pd.DataFrame:
     dates = pd.bdate_range("2024-01-02", periods=len(next(iter(closes.values()))))
     frames = []
@@ -56,7 +57,7 @@ def _panel(
             {
                 "symbol": symbol,
                 "date": dates,
-                "open": values,
+                "open": opens[symbol] if opens and symbol in opens else values,
                 "high": values,
                 "low": values,
                 "close": values,
@@ -73,10 +74,11 @@ def _panel(
     return normalize_bars(pd.concat(frames, ignore_index=True))
 
 
-def test_signal_from_t_executes_at_t_plus_one_close() -> None:
+def test_signal_from_t_executes_at_t_plus_one_open_and_earns_intraday_return() -> None:
     bars = _panel(
         {"600001": [10.0, 10.8, 11.664, 11.664]},
         {"600001": [1.0, 1.0, 1.0, 1.0]},
+        opens={"600001": [10.0, 10.0, 10.8, 11.664]},
     )
     dates = sorted(bars["date"].unique())
     result = run_backtest(
@@ -95,17 +97,17 @@ def test_signal_from_t_executes_at_t_plus_one_close() -> None:
 
     curve = result["equity_curve"]
     assert curve[0]["net_value"] == pytest.approx(1.0)
-    assert curve[1]["net_value"] == pytest.approx(1.0)
-    assert curve[2]["net_value"] == pytest.approx(1.08)
+    assert curve[1]["net_value"] == pytest.approx(1.08)
+    assert curve[2]["net_value"] == pytest.approx(1.1664)
     first_trade = result["trades"][0]
     assert first_trade["signal_date"] == "2024-01-02T00:00:00"
     assert first_trade["date"] == "2024-01-03T00:00:00"
     assert first_trade["signal_time"] == "2024-01-02T15:00:00+08:00"
-    assert first_trade["execution_time"] == "2024-01-03T15:00:00+08:00"
-    assert first_trade["execution_session"] == "T+1 close"
+    assert first_trade["execution_time"] == "2024-01-03T09:30:00+08:00"
+    assert first_trade["execution_session"] == "T+1 open"
     assert first_trade["estimated_market_shares"] > 0
     assert first_trade["estimated_market_lots"] > 0
-    assert first_trade["execution_price"] == pytest.approx(10.8)
+    assert first_trade["execution_price"] == pytest.approx(10.0)
 
 
 def test_negative_direction_ranks_low_raw_value_first_and_exposes_score() -> None:
@@ -285,9 +287,11 @@ def test_sealed_limit_up_and_down_block_trades() -> None:
 def test_price_limits_use_raw_prices_rounding_and_historical_rules() -> None:
     row = pd.Series(
         {
+            "open": 5.50,
             "close": 5.50,
             "prev_close": 5.00,
             "volume": 1_000,
+            "trade_open": 10.50,
             "trade_close": 10.50,
             "trade_prev_close": 10.00,
             "trade_volume": 100_000,
@@ -302,14 +306,14 @@ def test_price_limits_use_raw_prices_rounding_and_historical_rules() -> None:
     row["trade_volume"] = 100_000
 
     row["trade_prev_close"] = 10.03
-    row["trade_close"] = 11.03
+    row["trade_open"] = 11.03
     assert (
         _blocked_reason("600001", row, "buy", trading_date)
         == "sealed_limit_up"
     )
     row["trade_prev_close"] = 10.00
     row["trade_reference_close"] = 8.50
-    row["trade_close"] = 8.60
+    row["trade_open"] = 8.60
     assert _blocked_reason("600001", row, "sell", trading_date) is None
     assert _price_limit("300001", False, date(2020, 8, 21)) == 0.10
     assert _price_limit("300001", False, date(2020, 8, 24)) == 0.20
@@ -318,6 +322,7 @@ def test_price_limits_use_raw_prices_rounding_and_historical_rules() -> None:
 def test_unknown_st_status_is_not_silently_treated_as_known() -> None:
     row = pd.Series(
         {
+            "open": 10.50,
             "close": 10.50,
             "prev_close": 10.00,
             "volume": 100_000,

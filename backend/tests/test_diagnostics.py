@@ -81,6 +81,13 @@ def test_walk_forward_efficiency_uses_fold_medians() -> None:
     assert result["efficiency"] == pytest.approx(0.5)
 
 
+def test_walk_forward_efficiency_rejects_negative_objective_ratio() -> None:
+    result = walk_forward_efficiency([-2.6, -2.6], [-2.6, -2.6])
+
+    assert result["available"] is False
+    assert "not positive" in result["reason"]
+
+
 def test_robust_objective_requires_all_symbols_and_penalizes_drawdown() -> None:
     metrics = {
         symbol: {

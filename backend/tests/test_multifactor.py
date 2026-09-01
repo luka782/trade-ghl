@@ -266,6 +266,7 @@ def test_different_time_series_factor_combinations_produce_different_signals() -
                 commission_rate=0,
                 minimum_commission=0,
                 slippage=0,
+                position_sizing="full",
                 minimum_holding_sessions=1,
                 cooldown_sessions=0,
             ),

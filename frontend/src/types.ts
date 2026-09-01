@@ -414,7 +414,12 @@ export interface TimingOptions {
     | 'mean_reversion'
     | 'factor_dual'
     | 'regime_reversion'
+    | 'regime_reversion_legacy'
     | 'rsi_bollinger'
+    | 'donchian_atr'
+    | 'ma_crossover_atr'
+    | 'buy_and_hold'
+    | 'ma_200'
   buy_threshold: number
   sell_threshold: number
   entry_score_threshold: number
@@ -453,6 +458,20 @@ export interface TimingOptions {
   exit_rsi_weight: number
   exit_bollinger_weight: number
   exit_regime_weight: number
+  regime_entry_mode: 'legacy_all' | 'confirmation_count'
+  regime_confirmation_required: number
+  donchian_entry_window: number
+  donchian_exit_window: number
+  donchian_trend_filter: boolean
+  ma_fast_period: number
+  ma_slow_period: number
+  atr_period: number
+  atr_stop_multiple: number
+  atr_trailing_multiple: number
+  position_sizing: 'full' | 'fixed' | 'atr_risk'
+  fixed_position_fraction: number
+  risk_per_trade: number
+  max_position_fraction: number
 }
 
 export interface TimingBacktestRequest {
@@ -489,6 +508,8 @@ export interface TimingWalkForwardProtocol {
   test_months?: number
   purge_sessions?: number
   embargo_sessions?: number
+  minimum_round_trips_per_symbol?: number
+  minimum_market_exposure?: number
   [key: string]: unknown
 }
 

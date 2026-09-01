@@ -135,9 +135,15 @@ def aggregate_symbol_metrics(
             raise ValueError(f"Missing required symbols: {', '.join(missing)}")
         frame = frame[frame["symbol"].astype(str).isin(required)]
     metric_names = (
+        "total_return",
         "sharpe",
         "annualized_return",
+        "calmar",
         "max_drawdown",
+        "win_rate",
+        "profit_loss_ratio",
+        "market_exposure",
+        "round_trip_count",
         "turnover",
     )
     result: dict[str, Any] = {"symbol_count": len(frame)}

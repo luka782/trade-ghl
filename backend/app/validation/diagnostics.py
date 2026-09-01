@@ -172,6 +172,16 @@ def walk_forward_efficiency(
     out_metric = float(np.median(out_values))
     if abs(in_metric) <= 1e-12:
         return {"available": False, "reason": "IS metric is zero"}
+    if in_metric <= 0:
+        return {
+            "available": False,
+            "reason": (
+                "IS objective is not positive; a ratio would make equally "
+                "poor negative IS/OOS results look efficient"
+            ),
+            "in_sample_metric": in_metric,
+            "out_of_sample_metric": out_metric,
+        }
     return {
         "available": True,
         "efficiency": out_metric / in_metric,

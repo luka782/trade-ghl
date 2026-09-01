@@ -498,7 +498,7 @@ export function MultiFactorBacktestPage({
 
 export function TimingBacktestPage() {
   const [form, setForm] = useSessionState<TimingForm>(
-    'aqmvp.timing.backtest.form.v6',
+    'aqmvp.timing.backtest.form.v8',
     () => ({
       symbol: '510300',
       startDate: yearsAgo(3),
@@ -522,7 +522,7 @@ export function TimingBacktestPage() {
         fixed_stop: 0.08,
         trailing_stop: 0.1,
         max_holding_sessions: 60,
-        minimum_holding_sessions: 2,
+        minimum_holding_sessions: 0,
         cooldown_sessions: 5,
         initial_capital: 1_000_000,
         lot_size: 100,
@@ -546,6 +546,20 @@ export function TimingBacktestPage() {
         exit_rsi_weight: 0.2,
         exit_bollinger_weight: 0.25,
         exit_regime_weight: 0.15,
+        regime_entry_mode: 'confirmation_count',
+        regime_confirmation_required: 2,
+        donchian_entry_window: 55,
+        donchian_exit_window: 20,
+        donchian_trend_filter: false,
+        ma_fast_period: 20,
+        ma_slow_period: 60,
+        atr_period: 20,
+        atr_stop_multiple: 2,
+        atr_trailing_multiple: 3,
+        position_sizing: 'atr_risk',
+        fixed_position_fraction: 0.5,
+        risk_per_trade: 0.01,
+        max_position_fraction: 0.5,
       },
     }),
   )
@@ -621,7 +635,7 @@ export function TimingBacktestPage() {
       return
     }
     if (
-      ['factor_dual', 'regime_reversion'].includes(
+      ['factor_dual', 'regime_reversion', 'regime_reversion_legacy'].includes(
         form.options.timing_style,
       ) &&
       (!validConfig(entryConfig) || !validConfig(exitConfig))
@@ -631,7 +645,7 @@ export function TimingBacktestPage() {
       return
     }
     if (
-      ['factor_dual', 'regime_reversion'].includes(
+      ['factor_dual', 'regime_reversion', 'regime_reversion_legacy'].includes(
         form.options.timing_style,
       ) &&
       effectiveConfigFingerprint(entryConfig) ===
@@ -689,10 +703,12 @@ export function TimingBacktestPage() {
       return
     }
     if (
-      (form.options.timing_style === 'regime_reversion' &&
+      (['regime_reversion', 'regime_reversion_legacy'].includes(
+        form.options.timing_style,
+      ) &&
         (form.options.ma_period < 2 ||
           form.options.ma_slope_period < 1)) ||
-      (['regime_reversion', 'rsi_bollinger'].includes(
+      (['regime_reversion', 'regime_reversion_legacy', 'rsi_bollinger'].includes(
         form.options.timing_style,
       ) &&
         (form.options.rsi_period < 2 ||
@@ -705,7 +721,26 @@ export function TimingBacktestPage() {
       return
     }
     if (
-      form.options.timing_style === 'regime_reversion' &&
+      form.options.timing_style === 'ma_crossover_atr' &&
+      form.options.ma_fast_period >= form.options.ma_slow_period
+    ) {
+      setRunStatus('error')
+      setRunError('双均线策略的快均线周期必须小于慢均线周期')
+      return
+    }
+    if (
+      form.options.atr_period < 2 ||
+      form.options.atr_stop_multiple <= 0 ||
+      form.options.atr_trailing_multiple <= 0
+    ) {
+      setRunStatus('error')
+      setRunError('请检查ATR周期和止损倍数')
+      return
+    }
+    if (
+      ['regime_reversion', 'regime_reversion_legacy'].includes(
+        form.options.timing_style,
+      ) &&
       (form.options.entry_factor_weight +
         form.options.entry_rsi_weight +
         form.options.entry_bollinger_weight +
@@ -737,13 +772,13 @@ export function TimingBacktestPage() {
         symbol: form.symbol.trim().toUpperCase(),
         config: { ...config, mode: 'time_series' },
         entry_config:
-          ['factor_dual', 'regime_reversion'].includes(
+          ['factor_dual', 'regime_reversion', 'regime_reversion_legacy'].includes(
             form.options.timing_style,
           )
             ? { ...entryConfig, mode: 'time_series' }
             : undefined,
         exit_config:
-          ['factor_dual', 'regime_reversion'].includes(
+          ['factor_dual', 'regime_reversion', 'regime_reversion_legacy'].includes(
             form.options.timing_style,
           )
             ? { ...exitConfig, mode: 'time_series' }
@@ -764,7 +799,16 @@ export function TimingBacktestPage() {
   }
 
   const walkForwardRequest: TimingWalkForwardRequest = {
-    symbols: ['515080', '510300', '600519', '603986'],
+    symbols: [
+      '515080',
+      '510300',
+      '588200',
+      '600519',
+      '600036',
+      '603986',
+      '600487',
+      '002460',
+    ],
     config: { ...config, mode: 'time_series' },
     entry_config: { ...entryConfig, mode: 'time_series' },
     exit_config: { ...exitConfig, mode: 'time_series' },
@@ -779,6 +823,8 @@ export function TimingBacktestPage() {
       test_months: 2,
       purge_sessions: 20,
       embargo_sessions: 5,
+      minimum_round_trips_per_symbol: 1,
+      minimum_market_exposure: 0.02,
     },
   }
 
@@ -858,7 +904,12 @@ export function TimingBacktestPage() {
                 />
               </Field>
             </div>
-            {!['factor_dual', 'regime_reversion', 'rsi_bollinger'].includes(
+            {![
+              'factor_dual',
+              'regime_reversion',
+              'regime_reversion_legacy',
+              'rsi_bollinger',
+            ].includes(
               form.options.timing_style,
             ) ? (
               <MultiFactorBuilder
@@ -885,16 +936,23 @@ export function TimingBacktestPage() {
                 <option value="mean_reversion">低吸高抛</option>
                 <option value="factor_dual">智能双评分</option>
                 <option value="regime_reversion">综合趋势反转</option>
+                <option value="regime_reversion_legacy">
+                  综合趋势反转（旧版严格条件）
+                </option>
                 <option value="rsi_bollinger">RSI + 布林带反转</option>
+                <option value="donchian_atr">Donchian 突破 + ATR</option>
+                <option value="ma_crossover_atr">双均线趋势 + ATR</option>
               </select>
             </Field>
-            {['factor_dual', 'regime_reversion'].includes(
+            {['factor_dual', 'regime_reversion', 'regime_reversion_legacy'].includes(
               form.options.timing_style,
             ) ? (
               <div className="smart-score-builders">
                 <div className="smart-score-reset">
                   <span>
-                    {form.options.timing_style === 'regime_reversion'
+                    {['regime_reversion', 'regime_reversion_legacy'].includes(
+                      form.options.timing_style,
+                    )
                       ? '原始双评分将与 RSI、布林带和长期趋势环境合成为最终分数。'
                       : '买入与卖出应使用不同的因子方向和权重。'}
                   </span>
@@ -1031,12 +1089,38 @@ export function TimingBacktestPage() {
                   </Field>
                 </div>
               </>
-            ) : form.options.timing_style === 'regime_reversion' ? (
+            ) : ['regime_reversion', 'regime_reversion_legacy'].includes(
+                form.options.timing_style,
+              ) ? (
               <>
                 <div className="form-note">
-                  长期均线只判断上升、震荡、下降环境；RSI 与布林带确认短期反转，所有指标仅使用当日及以前行情。
+                  {form.options.timing_style === 'regime_reversion_legacy'
+                    ? '旧版要求低位、非下降趋势、RSI恢复、布林恢复和因子确认全部同时满足，仅用于对照。'
+                    : '候选区形成后，由RSI、布林带和因子改善按确认数量入场；下降趋势继续过滤并单独审计。'}
                 </div>
                 <div className="form-grid form-grid--2">
+                  <Field label="确认条件数量" hint="三个确认项中至少满足几项">
+                    <select
+                      value={
+                        form.options.timing_style === 'regime_reversion_legacy'
+                          ? 3
+                          : form.options.regime_confirmation_required
+                      }
+                      disabled={
+                        form.options.timing_style === 'regime_reversion_legacy'
+                      }
+                      onChange={(event) =>
+                        updateOption(
+                          'regime_confirmation_required',
+                          Number(event.target.value),
+                        )
+                      }
+                    >
+                      <option value={1}>满足 1 项</option>
+                      <option value={2}>满足 2 项</option>
+                      <option value={3}>全部满足</option>
+                    </select>
+                  </Field>
                   <Field label="长期 MA 周期">
                     <input
                       type="number"
@@ -1240,6 +1324,103 @@ export function TimingBacktestPage() {
                   </Field>
                 </div>
               </>
+            ) : form.options.timing_style === 'donchian_atr' ? (
+              <>
+                <div className="form-note">
+                  收盘突破此前窗口最高价后，下一交易日开盘买入；跌破此前退出窗口最低价或触发ATR止损后退出。
+                </div>
+                <div className="form-grid form-grid--2">
+                  <Field label="突破窗口">
+                    <input
+                      type="number"
+                      min={10}
+                      value={form.options.donchian_entry_window}
+                      onChange={(event) =>
+                        updateOption(
+                          'donchian_entry_window',
+                          Number(event.target.value),
+                        )
+                      }
+                    />
+                  </Field>
+                  <Field label="退出窗口">
+                    <input
+                      type="number"
+                      min={5}
+                      value={form.options.donchian_exit_window}
+                      onChange={(event) =>
+                        updateOption(
+                          'donchian_exit_window',
+                          Number(event.target.value),
+                        )
+                      }
+                    />
+                  </Field>
+                  <Field label="长期趋势过滤">
+                    <select
+                      value={
+                        form.options.donchian_trend_filter ? 'enabled' : 'disabled'
+                      }
+                      onChange={(event) =>
+                        updateOption(
+                          'donchian_trend_filter',
+                          event.target.value === 'enabled',
+                        )
+                      }
+                    >
+                      <option value="disabled">关闭</option>
+                      <option value="enabled">启用长期均线过滤</option>
+                    </select>
+                  </Field>
+                </div>
+              </>
+            ) : form.options.timing_style === 'ma_crossover_atr' ? (
+              <>
+                <div className="form-note">
+                  快均线上穿慢均线且慢均线斜率为正后买入，死叉或ATR止损后退出。
+                </div>
+                <div className="form-grid form-grid--3">
+                  <Field label="快均线">
+                    <input
+                      type="number"
+                      min={2}
+                      value={form.options.ma_fast_period}
+                      onChange={(event) =>
+                        updateOption(
+                          'ma_fast_period',
+                          Number(event.target.value),
+                        )
+                      }
+                    />
+                  </Field>
+                  <Field label="慢均线">
+                    <input
+                      type="number"
+                      min={5}
+                      value={form.options.ma_slow_period}
+                      onChange={(event) =>
+                        updateOption(
+                          'ma_slow_period',
+                          Number(event.target.value),
+                        )
+                      }
+                    />
+                  </Field>
+                  <Field label="慢均线斜率期">
+                    <input
+                      type="number"
+                      min={1}
+                      value={form.options.ma_slope_period}
+                      onChange={(event) =>
+                        updateOption(
+                          'ma_slope_period',
+                          Number(event.target.value),
+                        )
+                      }
+                    />
+                  </Field>
+                </div>
+              </>
             ) : form.options.timing_style === 'factor_dual' ? (
               <>
                 <div className="form-note">
@@ -1419,34 +1600,146 @@ export function TimingBacktestPage() {
                 </div>
               </>
             )}
-            <div className="form-grid form-grid--2">
-              <Field label="固定止损" hint="小数，0.08 = 8%">
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={form.options.fixed_stop}
-                  onChange={(event) =>
-                    updateOption('fixed_stop', Number(event.target.value))
-                  }
-                />
-              </Field>
-              <Field label="移动止损" hint="相对持仓高点">
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={form.options.trailing_stop}
+            {['donchian_atr', 'ma_crossover_atr'].includes(
+              form.options.timing_style,
+            ) ? (
+              <div className="form-grid form-grid--3">
+                <Field label="ATR周期">
+                  <input
+                    type="number"
+                    min={2}
+                    value={form.options.atr_period}
+                    onChange={(event) =>
+                      updateOption('atr_period', Number(event.target.value))
+                    }
+                  />
+                </Field>
+                <Field label="ATR初始止损倍数">
+                  <input
+                    type="number"
+                    min={0.1}
+                    step={0.1}
+                    value={form.options.atr_stop_multiple}
+                    onChange={(event) =>
+                      updateOption(
+                        'atr_stop_multiple',
+                        Number(event.target.value),
+                      )
+                    }
+                  />
+                </Field>
+                <Field label="ATR移动止损倍数">
+                  <input
+                    type="number"
+                    min={0.1}
+                    step={0.1}
+                    value={form.options.atr_trailing_multiple}
+                    onChange={(event) =>
+                      updateOption(
+                        'atr_trailing_multiple',
+                        Number(event.target.value),
+                      )
+                    }
+                  />
+                </Field>
+              </div>
+            ) : (
+              <div className="form-grid form-grid--2">
+                <Field label="固定止损" hint="小数，0.08 = 8%">
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={form.options.fixed_stop}
+                    onChange={(event) =>
+                      updateOption('fixed_stop', Number(event.target.value))
+                    }
+                  />
+                </Field>
+                <Field label="移动止损" hint="相对持仓高点">
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={form.options.trailing_stop}
+                    onChange={(event) =>
+                      updateOption(
+                        'trailing_stop',
+                        Number(event.target.value),
+                      )
+                    }
+                  />
+                </Field>
+              </div>
+            )}
+            <div className="form-grid form-grid--3">
+              <Field label="仓位模型">
+                <select
+                  value={form.options.position_sizing}
                   onChange={(event) =>
                     updateOption(
-                      'trailing_stop',
-                      Number(event.target.value),
+                      'position_sizing',
+                      event.target.value as TimingOptions['position_sizing'],
                     )
                   }
-                />
+                >
+                  <option value="atr_risk">ATR风险仓位</option>
+                  <option value="fixed">固定比例</option>
+                  <option value="full">全额仓位（仅对照）</option>
+                </select>
               </Field>
+              {form.options.position_sizing === 'atr_risk' ? (
+                <>
+                  <Field label="单笔风险" hint="0.01 = 账户权益1%">
+                    <input
+                      type="number"
+                      min={0.001}
+                      max={1}
+                      step={0.005}
+                      value={form.options.risk_per_trade}
+                      onChange={(event) =>
+                        updateOption(
+                          'risk_per_trade',
+                          Number(event.target.value),
+                        )
+                      }
+                    />
+                  </Field>
+                  <Field label="最大仓位比例">
+                    <input
+                      type="number"
+                      min={0.01}
+                      max={1}
+                      step={0.05}
+                      value={form.options.max_position_fraction}
+                      onChange={(event) =>
+                        updateOption(
+                          'max_position_fraction',
+                          Number(event.target.value),
+                        )
+                      }
+                    />
+                  </Field>
+                </>
+              ) : form.options.position_sizing === 'fixed' ? (
+                <Field label="固定仓位比例">
+                  <input
+                    type="number"
+                    min={0.01}
+                    max={1}
+                    step={0.05}
+                    value={form.options.fixed_position_fraction}
+                    onChange={(event) =>
+                      updateOption(
+                        'fixed_position_fraction',
+                        Number(event.target.value),
+                      )
+                    }
+                  />
+                </Field>
+              ) : null}
             </div>
             <div className="form-grid form-grid--3">
               <Field label="最长持有">
@@ -1465,7 +1758,10 @@ export function TimingBacktestPage() {
                   <span>日</span>
                 </div>
               </Field>
-              <Field label="最短持有">
+              <Field
+                label="额外最短持有"
+                hint="0 = 买入日收盘可发出卖出信号，下一交易日开盘成交"
+              >
                 <div className="input-suffix">
                   <input
                     type="number"

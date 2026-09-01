@@ -29,8 +29,12 @@ export function TimingStabilityPanel({ report }: { report: unknown }) {
   const diagnostics = diagnosticsRecord(report)
   const stability =
     asRecord(diagnostics.parameter_stability) ??
+    asRecord(diagnostics.perturbation_stability) ??
     asRecord(diagnostics.stability) ??
     diagnostics
+  const wfe =
+    asRecord(diagnostics.walk_forward_efficiency) ??
+    asRecord(diagnostics.wfe)
   const perturbations = [
     ...pickArray(diagnostics, [
       'perturbations',
@@ -113,10 +117,9 @@ export function TimingStabilityPanel({ report }: { report: unknown }) {
           {
             label: 'WF 效率',
             value: formatPercent(
-              pickNumber(diagnostics, [
-                'walk_forward_efficiency',
-                'wfe',
+              pickNumber(wfe ?? diagnostics, [
                 'efficiency',
+                'wfe',
               ]),
             ),
           },

@@ -200,6 +200,91 @@ def bollinger_bands(
     )
 
 
+def average_true_range(
+    bars: pd.DataFrame,
+    window: int = 20,
+) -> pd.Series:
+    """计算只使用当日及更早 OHLC 的简单移动平均真实波幅。"""
+    _validate_inputs(bars, window=window, price_column="close")
+    missing = [column for column in ("high", "low") if column not in bars]
+    if missing:
+        raise ValueError(
+            "ATR input is missing required columns: " + ", ".join(missing)
+        )
+    ordered, close = _ordered_prices(bars, "close")
+    high = pd.to_numeric(
+        ordered["high"], errors="coerce"
+    ).replace([np.inf, -np.inf], np.nan)
+    low = pd.to_numeric(
+        ordered["low"], errors="coerce"
+    ).replace([np.inf, -np.inf], np.nan)
+    previous_close = close.groupby(
+        ordered["symbol"], sort=False
+    ).shift(1)
+    true_range = pd.concat(
+        [
+            high - low,
+            (high - previous_close).abs(),
+            (low - previous_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1, skipna=True)
+    values = true_range.groupby(
+        ordered["symbol"], sort=False
+    ).transform(
+        lambda item: item.rolling(window, min_periods=window).mean()
+    )
+    return _restore_order(bars, ordered, values)
+
+
+def donchian_channels(
+    bars: pd.DataFrame,
+    entry_window: int = 55,
+    exit_window: int = 20,
+) -> pd.DataFrame:
+    """计算不包含 T 日自身的 Donchian 上下轨，供 T 日收盘判断突破。
+
+    ``shift(1)`` 保证上轨和下轨只来自 T-1 及更早行情；否则把 T 日最高/
+    最低价放进比较窗口会改变突破定义，也容易掩盖前视错误。
+    """
+    _validate_inputs(bars, window=entry_window, price_column="close")
+    if isinstance(exit_window, bool) or not isinstance(exit_window, int) or exit_window < 1:
+        raise ValueError("exit_window must be a positive integer")
+    missing = [column for column in ("high", "low") if column not in bars]
+    if missing:
+        raise ValueError(
+            "Donchian input is missing required columns: " + ", ".join(missing)
+        )
+    ordered, _ = _ordered_prices(bars, "close")
+    high = pd.to_numeric(
+        ordered["high"], errors="coerce"
+    ).replace([np.inf, -np.inf], np.nan)
+    low = pd.to_numeric(
+        ordered["low"], errors="coerce"
+    ).replace([np.inf, -np.inf], np.nan)
+    upper = high.groupby(
+        ordered["symbol"], sort=False
+    ).transform(
+        lambda item: item.shift(1).rolling(
+            entry_window, min_periods=entry_window
+        ).max()
+    )
+    lower = low.groupby(
+        ordered["symbol"], sort=False
+    ).transform(
+        lambda item: item.shift(1).rolling(
+            exit_window, min_periods=exit_window
+        ).min()
+    )
+    return pd.DataFrame(
+        {
+            "upper": _restore_order(bars, ordered, upper),
+            "lower": _restore_order(bars, ordered, lower),
+        },
+        index=bars.index,
+    )
+
+
 ma = moving_average
 ma_slope = moving_average_slope
 distance_to_ma = distance_to_moving_average
@@ -207,7 +292,9 @@ rsi = wilder_rsi
 
 
 __all__ = [
+    "average_true_range",
     "bollinger_bands",
+    "donchian_channels",
     "distance_to_ma",
     "distance_to_moving_average",
     "ma",

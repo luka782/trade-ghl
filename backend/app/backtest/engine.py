@@ -134,16 +134,17 @@ def _blocked_reason(
     side: Literal["buy", "sell"],
     trading_date: pd.Timestamp,
 ) -> str | None:
-    """判断订单是否因缺行情、停牌或封板而无法在模拟收盘成交。
+    """判断订单是否因缺行情、停牌或开盘封板而无法模拟成交。
 
-    缺少逐笔委托簿时，收盘价等于涨跌停价被保守视为封板，以避免高估策略流动性。
+    日线模型在集合竞价开盘成交；缺少委托簿时，开盘价等于涨跌停价被保守
+    视为不可成交，以避免假设订单一定能排在封板队列前方。
     """
     if row is None:
         return "missing_bar"
-    close = _row_number(row, "close")
+    open_price = _row_number(row, "open")
     volume = _row_number(row, "volume")
-    if not np.isfinite(close) or close <= 0:
-        return "missing_close"
+    if not np.isfinite(open_price) or open_price <= 0:
+        return "missing_open"
     if not np.isfinite(volume) or volume <= 0:
         return "suspension"
 
@@ -152,9 +153,9 @@ def _blocked_reason(
         is_st = _row_flag(row, "is_st") if _row_flag(row, "is_st_known") else False
         limit = _price_limit(symbol, is_st, trading_date.date())
         limit_price = _rounded_limit_price(previous_close, limit, side)
-        if side == "buy" and close >= limit_price - 1e-8:
+        if side == "buy" and open_price >= limit_price - 1e-8:
             return "sealed_limit_up"
-        if side == "sell" and close <= limit_price + 1e-8:
+        if side == "sell" and open_price <= limit_price + 1e-8:
             return "sealed_limit_down"
     return None
 
@@ -206,6 +207,10 @@ def _stamp_duty_rate(config: BacktestConfig, trading_date: pd.Timestamp) -> floa
     return 0.001 if trading_date.date() < date(2023, 8, 28) else 0.0005
 
 
+def _simulated_open_time(value: pd.Timestamp) -> str:
+    return f"{pd.Timestamp(value).date().isoformat()}T09:30:00+08:00"
+
+
 def _simulated_close_time(value: pd.Timestamp) -> str:
     return f"{pd.Timestamp(value).date().isoformat()}T15:00:00+08:00"
 
@@ -216,11 +221,12 @@ def run_backtest(
     config: BacktestConfig,
     benchmark_bars: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
-    """Run an equal-weight Top-N simulation with conservative T+1-close execution.
+    """Run an equal-weight Top-N simulation with T+1-open execution.
 
-    A signal is calculated after close on T, traded only at close on the next
-    available market date, and earns returns starting after that execution close.
-    Orders are netted by symbol, which prevents same-day round trips.
+    A signal is calculated after close on T and traded at the next market day's
+    open. The position therefore earns that session's open-to-close return.
+    Orders are netted by symbol, and a stock bought on one session cannot be sold
+    until the following trading session.
     """
 
     if bars.empty:
@@ -263,7 +269,7 @@ def run_backtest(
         )
     model_warnings.extend(
         [
-            "Without order-book data, a close at the rounded daily price limit is "
+            "Without order-book data, an open at the rounded daily price limit is "
             "conservatively treated as unfillable.",
             "IPO and relisting no-limit windows are not modeled because listing-event "
             "history is unavailable.",
@@ -297,30 +303,18 @@ def run_backtest(
 
     for trading_date in dates:
         current_rows = rows_by_date.get(trading_date, {})
-        for symbol, row in current_rows.items():
-            close = float(row["close"])
-            if np.isfinite(close) and close > 0:
-                last_prices[symbol] = close
-        for symbol in holdings:
-            row = current_rows.get(symbol)
-            has_valuation = (
-                row is not None
-                and np.isfinite(float(row.get("close", float("nan"))))
-                and float(row.get("close", 0.0)) > 0
-            )
-            stale_sessions[symbol] = 0 if has_valuation else stale_sessions.get(
-                symbol, 0
-            ) + 1
-            if stale_sessions[symbol] > config.max_stale_sessions:
-                raise ValueError(
-                    f"Held symbol {symbol} has no valuation bar for "
-                    f"{stale_sessions[symbol]} market sessions as of "
-                    f"{trading_date.date()}; the backtest was stopped instead of "
-                    "carrying a stale price indefinitely."
-                )
-
+        # 开盘撮合前只能使用当日开盘价和此前收盘估值，不能用尚未发生的当日收盘价
+        # 决定目标数量。开盘成交后，日终权益再使用当日收盘价，因此买入日自然
+        # 包含从 T+1 开盘到收盘的收益。
         pre_trade_equity = cash + sum(
-            quantity * last_prices.get(symbol, 0.0)
+            quantity
+            * (
+                float(current_rows[symbol]["open"])
+                if symbol in current_rows
+                and np.isfinite(float(current_rows[symbol].get("open", float("nan"))))
+                and float(current_rows[symbol].get("open", 0.0)) > 0
+                else last_prices.get(symbol, 0.0)
+            )
             for symbol, quantity in holdings.items()
         )
         daily_turnover_notional = 0.0
@@ -333,15 +327,17 @@ def run_backtest(
             rebalance_prices: dict[str, float] = {}
             for symbol in all_symbols:
                 row = current_rows.get(symbol)
-                close = (
-                    float(row["close"])
-                    if row is not None and np.isfinite(float(row["close"]))
+                open_price = (
+                    float(row["open"])
+                    if row is not None and np.isfinite(float(row["open"]))
                     else last_prices.get(symbol, float("nan"))
                 )
-                rebalance_prices[symbol] = close
+                rebalance_prices[symbol] = open_price
                 desired_quantity[symbol] = (
-                    target_value / close
-                    if symbol in targets and np.isfinite(close) and close > 0
+                    target_value / open_price
+                    if symbol in targets
+                    and np.isfinite(open_price)
+                    and open_price > 0
                     else 0.0
                 )
 
@@ -388,7 +384,7 @@ def run_backtest(
                                 order["signal_date"]
                             ),
                             "date": trading_date,
-                            "execution_time": _simulated_close_time(trading_date),
+                            "execution_time": _simulated_open_time(trading_date),
                             "symbol": symbol,
                             "side": "sell",
                             "reason": reason,
@@ -396,10 +392,10 @@ def run_backtest(
                         }
                     )
                     continue
-                close = float(row["close"])  # type: ignore[index]
-                market_close = _row_number(row, "close")  # type: ignore[arg-type]
-                execution_price = close * (1.0 - config.slippage_rate)
-                market_execution_price = market_close * (
+                open_price = float(row["open"])  # type: ignore[index]
+                market_open = _row_number(row, "open")  # type: ignore[arg-type]
+                execution_price = open_price * (1.0 - config.slippage_rate)
+                market_execution_price = market_open * (
                     1.0 - config.slippage_rate
                 )
                 notional = quantity * execution_price
@@ -411,7 +407,7 @@ def run_backtest(
                 commission = _commission(notional, config)
                 applied_stamp_duty_rate = _stamp_duty_rate(config, trading_date)
                 stamp_duty = notional * applied_stamp_duty_rate
-                slippage_cost = quantity * close * config.slippage_rate
+                slippage_cost = quantity * open_price * config.slippage_rate
                 cash += notional - commission - stamp_duty
                 remaining = holdings.get(symbol, 0.0) - quantity
                 if remaining <= 1e-12:
@@ -423,22 +419,22 @@ def run_backtest(
                 total_commission += commission
                 total_stamp_duty += stamp_duty
                 total_slippage += slippage_cost
-                daily_turnover_notional += quantity * close
+                daily_turnover_notional += quantity * open_price
                 trades.append(
                     {
                         "signal_date": order["signal_date"],
                         "signal_time": _simulated_close_time(order["signal_date"]),
                         "date": trading_date,
-                        "execution_time": _simulated_close_time(trading_date),
-                        "execution_session": "T+1 close",
+                        "execution_time": _simulated_open_time(trading_date),
+                        "execution_session": "T+1 open",
                         "symbol": symbol,
                         "side": "sell",
                         "quantity": quantity,
                         "accounting_quantity": quantity,
                         "estimated_market_shares": estimated_market_shares,
                         "estimated_market_lots": estimated_market_shares / 100.0,
-                        "close": close,
-                        "market_close": market_close,
+                        "open": open_price,
+                        "market_open": market_open,
                         "market_reference_close": _reference_close(row),
                         "execution_price": execution_price,
                         "market_execution_price": market_execution_price,
@@ -464,7 +460,7 @@ def run_backtest(
                                 order["signal_date"]
                             ),
                             "date": trading_date,
-                            "execution_time": _simulated_close_time(trading_date),
+                            "execution_time": _simulated_open_time(trading_date),
                             "symbol": symbol,
                             "side": "buy",
                             "reason": reason,
@@ -472,9 +468,9 @@ def run_backtest(
                         }
                     )
                     continue
-                close = float(row["close"])  # type: ignore[index]
-                market_close = _row_number(row, "close")  # type: ignore[arg-type]
-                execution_price = close * (1.0 + config.slippage_rate)
+                open_price = float(row["open"])  # type: ignore[index]
+                market_open = _row_number(row, "open")  # type: ignore[arg-type]
+                execution_price = open_price * (1.0 + config.slippage_rate)
                 if config.commission_rate > 0:
                     affordable = min(
                         max(
@@ -498,7 +494,7 @@ def run_backtest(
                                 order["signal_date"]
                             ),
                             "date": trading_date,
-                            "execution_time": _simulated_close_time(trading_date),
+                            "execution_time": _simulated_open_time(trading_date),
                             "symbol": symbol,
                             "side": "buy",
                             "reason": "insufficient_cash",
@@ -507,7 +503,7 @@ def run_backtest(
                     )
                     continue
                 notional = quantity * execution_price
-                market_execution_price = market_close * (
+                market_execution_price = market_open * (
                     1.0 + config.slippage_rate
                 )
                 estimated_market_shares = (
@@ -516,29 +512,29 @@ def run_backtest(
                     else float("nan")
                 )
                 commission = _commission(notional, config)
-                slippage_cost = quantity * close * config.slippage_rate
+                slippage_cost = quantity * open_price * config.slippage_rate
                 cash -= notional + commission
                 holdings[symbol] = holdings.get(symbol, 0.0) + quantity
                 last_buy_dates[symbol] = trading_date
                 stale_sessions[symbol] = 0
                 total_commission += commission
                 total_slippage += slippage_cost
-                daily_turnover_notional += quantity * close
+                daily_turnover_notional += quantity * open_price
                 trades.append(
                     {
                         "signal_date": order["signal_date"],
                         "signal_time": _simulated_close_time(order["signal_date"]),
                         "date": trading_date,
-                        "execution_time": _simulated_close_time(trading_date),
-                        "execution_session": "T+1 close",
+                        "execution_time": _simulated_open_time(trading_date),
+                        "execution_session": "T+1 open",
                         "symbol": symbol,
                         "side": "buy",
                         "quantity": quantity,
                         "accounting_quantity": quantity,
                         "estimated_market_shares": estimated_market_shares,
                         "estimated_market_lots": estimated_market_shares / 100.0,
-                        "close": close,
-                        "market_close": market_close,
+                        "open": open_price,
+                        "market_open": market_open,
                         "market_reference_close": _reference_close(row),
                         "execution_price": execution_price,
                         "market_execution_price": market_execution_price,
@@ -548,6 +544,30 @@ def run_backtest(
                         "stamp_duty": 0.0,
                         "slippage_cost": slippage_cost,
                     }
+                )
+
+        # 收盘后更新持仓估值。新仓从本日开盘成交，因此本日开盘到收盘的价格变化
+        # 已反映在当日权益和收益中。
+        for symbol, row in current_rows.items():
+            close = float(row["close"])
+            if np.isfinite(close) and close > 0:
+                last_prices[symbol] = close
+        for symbol in holdings:
+            row = current_rows.get(symbol)
+            has_valuation = (
+                row is not None
+                and np.isfinite(float(row.get("close", float("nan"))))
+                and float(row.get("close", 0.0)) > 0
+            )
+            stale_sessions[symbol] = 0 if has_valuation else stale_sessions.get(
+                symbol, 0
+            ) + 1
+            if stale_sessions[symbol] > config.max_stale_sessions:
+                raise ValueError(
+                    f"Held symbol {symbol} has no valuation bar for "
+                    f"{stale_sessions[symbol]} market sessions as of "
+                    f"{trading_date.date()}; the backtest was stopped instead of "
+                    "carrying a stale price indefinitely."
                 )
 
         equity = cash + sum(
@@ -674,10 +694,11 @@ def run_backtest(
         "direction": factor.metadata.direction,
         "direction_label": factor.metadata.direction_label,
         "execution_policy": (
-            "Signals use T close. Net orders execute at the next market day's close "
-            "(T+1); returns begin after that close. Unadjusted market data controls "
-            "suspension and rounded price-limit checks, while the selected price "
-            "series controls return accounting. Same-day round trips are rejected."
+            "Signals use T close. Net orders execute at the next market day's open "
+            "(T+1); returns begin at that open. Unadjusted market data controls "
+            "suspension and rounded opening price-limit checks, while the selected "
+            "price series controls return accounting. A stock cannot be sold until "
+            "the trading session after its buy session."
         ),
         "model_warnings": list(dict.fromkeys(model_warnings)),
         "warnings": list(dict.fromkeys(model_warnings)),

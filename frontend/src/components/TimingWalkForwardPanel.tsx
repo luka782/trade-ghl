@@ -183,6 +183,8 @@ function walkForwardWindows(report: unknown): Record<string, unknown>[] {
     .filter((row): row is Record<string, unknown> => row !== null)
     .map((row) => ({
       ...row,
+      ...(asRecord(row.fold) ?? {}),
+      ...(asRecord(row.test) ?? {}),
       ...(asRecord(row.metrics) ?? {}),
       ...(asRecord(row.test_metrics) ?? {}),
       ...(asRecord(row.oos_metrics) ?? {}),
@@ -287,7 +289,7 @@ export function TimingWalkForwardPanel({
   disabled?: boolean
 }) {
   const [stored, setStored] = useSessionState<StoredWalkForwardTask>(
-    'aqmvp.timing.walk-forward.task.v1',
+    'aqmvp.timing.walk-forward.task.v2',
     { taskId: null },
   )
   const [task, setTask] = useState<TimingWalkForwardTask | null>(null)
@@ -396,8 +398,8 @@ export function TimingWalkForwardPanel({
   return (
     <div className="timing-walk-forward-stack">
       <Panel
-        title="四标的 Walk-Forward 验证"
-        subtitle="515080、510300、600519、603986 的共同最近 3 年；最后 12 个完整月永久锁定为最终样本外"
+        title="八标的 Walk-Forward 验证"
+        subtitle="股票与ETF共同最近3年；最后12个完整月永久锁定为最终样本外"
         extra={
           status ? (
             <Badge tone={statusTone(status)}>{statusLabel(status)}</Badge>
@@ -405,7 +407,7 @@ export function TimingWalkForwardPanel({
         }
       >
         <div className="timing-protocol">
-          <div><span>共同协议</span><strong>最近 3 年 · 4 个标的</strong></div>
+          <div><span>共同协议</span><strong>最近 3 年 · 8 个标的</strong></div>
           <div><span>锁定区间</span><strong>最后 12 个完整月 OOS</strong></div>
           <div><span>参数候选</span><strong>约 96 组预注册候选</strong></div>
           <div><span>选择边界</span><strong>训练 / 验证 / 测试严格隔离</strong></div>
@@ -448,11 +450,11 @@ export function TimingWalkForwardPanel({
           <button
             type="button"
             className="button button--primary"
-            disabled={disabled || starting || running}
+            disabled={disabled || starting || running || Boolean(report)}
             onClick={() => void start()}
           >
             <ButtonContent loading={starting}>
-              {running ? '验证运行中' : report ? '重新启动验证' : '启动 Walk-Forward'}
+              {running ? '验证运行中' : report ? '锁定样本外已评估' : '启动 Walk-Forward'}
             </ButtonContent>
           </button>
           {stored.taskId !== null ? (

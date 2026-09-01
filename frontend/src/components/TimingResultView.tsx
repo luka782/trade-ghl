@@ -51,6 +51,12 @@ const REASON_LABELS: Record<string, string> = {
   rsi_overbought_reversal: 'RSI 进入超买区后转弱',
   bollinger_lower_recovery: '价格从布林带下轨附近回升',
   rsi_bollinger_entry: 'RSI与布林带共同确认反转',
+  donchian_breakout: '收盘突破此前Donchian上轨',
+  donchian_exit: '收盘跌破此前Donchian下轨',
+  ma_crossover: '快均线上穿慢均线且慢均线向上',
+  ma_crossdown: '快均线下穿慢均线',
+  atr_initial_stop: '触发ATR初始止损',
+  atr_trailing_stop: '触发ATR移动止损',
   bollinger_upper_reversal: '价格触及布林带上轨后转弱',
   long_ma_breakdown: '价格跌破长期均线且均线向下',
   final_entry_score: '最终买入分向上突破阈值',
@@ -133,15 +139,18 @@ function regimeTone(
 }
 
 function simulationTime(record: Record<string, unknown>): string {
-  // 所有信号在 T 日收盘后才已知，交易记录展示其 T+1 收盘模拟执行时点。
-  const value = pickString(record, [
-    'execution_time',
-    'timestamp',
-    'date',
-    'trade_date',
-    'signal_date',
-  ])
-  return value ? `${value.slice(0, 10)} 15:00（T+1 模拟）` : '—'
+  // 信号行展示 T 日收盘，成交行展示 T+1 开盘；优先使用后端审计时间，
+  // 避免把两种时点都硬编码成同一个时间。
+  const execution = pickString(record, ['execution_time', 'timestamp'])
+  if (execution) {
+    return `${execution.slice(0, 10)} ${execution.slice(11, 16) || '09:30'}（模拟）`
+  }
+  const signal = pickString(record, ['signal_time', 'time'])
+  if (signal) {
+    return `${signal.slice(0, 10)} ${signal.slice(11, 16) || '15:00'}（信号）`
+  }
+  const value = pickString(record, ['date', 'trade_date', 'signal_date'])
+  return value ? `${value.slice(0, 10)} 15:00（信号）` : '—'
 }
 
 function SignalTable({ rows }: { rows: unknown[] }) {
@@ -257,6 +266,7 @@ function TimingTradesTable({
                   {formatNumber(
                     pickNumber(record, [
                       'raw_price',
+                      'raw_open',
                       'raw_close',
                       'execution_price',
                       'price',
@@ -425,6 +435,47 @@ function DailyContributionTable({ rows }: { rows: unknown[] }) {
   )
 }
 
+function EntryConditionFunnel({ summary }: { summary: Record<string, unknown> }) {
+  const funnel = asRecord(summary.entry_funnel)
+  if (!funnel) {
+    return <ChartEmpty text="接口未返回入场条件漏斗" />
+  }
+  const items = [
+    ['indicator_ready', '指标准备完成'],
+    ['candidate_zone', '进入候选区'],
+    ['regime_allowed', '通过趋势过滤'],
+    ['price_allowed', '通过价格位置'],
+    ['rsi_confirmation', 'RSI确认'],
+    ['bollinger_confirmation', '布林带确认'],
+    ['factor_confirmation', '因子评分确认'],
+    ['confirmation_passed', '确认条件通过'],
+    ['orders_created', '生成订单'],
+    ['orders_filled', '完成成交'],
+  ] as const
+  return (
+    <div className="table-wrap timing-table">
+      <table>
+        <thead>
+          <tr>
+            <th>阶段</th>
+            <th className="numeric">命中次数</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(([key, label]) => (
+            <tr key={key}>
+              <td>{label}</td>
+              <td className="numeric">
+                {formatNumber(pickNumber(funnel, [key]), 0)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function timingPriceOption(
   trace: unknown[],
   trades: unknown[],
@@ -550,12 +601,12 @@ function TradeFactorDetails({
   return (
     <Panel
       title="买卖标记详情"
-      subtitle="信号在 T 日收盘生成，成交在下一交易日收盘模拟"
+      subtitle="信号在 T 日收盘生成，成交在下一交易日开盘模拟"
     >
       <div className="timing-trade-detail-grid">
         <span>信号日期</span>
         <strong>{pickString(trade, ['signal_date', 'signal_time'])?.slice(0, 10) ?? '—'}</strong>
-        <span>T+1 模拟成交日期</span>
+        <span>T+1 开盘成交日期</span>
         <strong>{pickString(trade, ['execution_date', 'execution_time'])?.slice(0, 10) ?? '—'}</strong>
         <span>综合分数</span>
         <strong>{formatNumber(pickNumber(trade, ['composite_score']), 3)}</strong>
@@ -585,6 +636,16 @@ function TradeFactorDetails({
             ]),
             3,
           )}
+        </strong>
+        <span>ATR / 仓位比例</span>
+        <strong>
+          {formatNumber(pickNumber(audit, ['atr_20']), 3)} /{' '}
+          {formatPercent(pickNumber(audit, ['position_fraction']))}
+        </strong>
+        <span>风险预算 / 止损距离</span>
+        <strong>
+          {formatNumber(pickNumber(audit, ['risk_cash']), 2)} /{' '}
+          {formatNumber(pickNumber(audit, ['stop_distance']), 3)}
         </strong>
         <span>买入分 / 卖出风险分</span>
         <strong>
@@ -806,6 +867,42 @@ export function TimingResultView({
       dashedKeys: ['entry_score_threshold', 'exit_score_threshold'],
     },
   )
+  const donchianOption = buildLineOption(
+    result.score_trace ?? [],
+    [
+      'adjusted_close',
+      'donchian_upper',
+      'donchian_lower',
+      'atr_initial_stop_line',
+      'atr_trailing_stop_line',
+    ],
+    {
+      dashedKeys: [
+        'donchian_upper',
+        'donchian_lower',
+        'atr_initial_stop_line',
+        'atr_trailing_stop_line',
+      ],
+    },
+  )
+  const maCrossoverOption = buildLineOption(
+    result.score_trace ?? [],
+    [
+      'adjusted_close',
+      'ma_fast',
+      'ma_slow',
+      'atr_initial_stop_line',
+      'atr_trailing_stop_line',
+    ],
+    {
+      dashedKeys: [
+        'ma_fast',
+        'ma_slow',
+        'atr_initial_stop_line',
+        'atr_trailing_stop_line',
+      ],
+    },
+  )
 
   const totalReturn = pickNumber(summary, [
     'total_return',
@@ -911,12 +1008,33 @@ export function TimingResultView({
             value: formatCompact(result.trades?.length ?? 0),
           },
           {
+            label: '市场暴露',
+            value: formatPercent(
+              pickNumber(summary, ['market_exposure']),
+            ),
+          },
+          {
+            label: '仓位模型',
+            value:
+              pickString(summary, ['position_sizing']) === 'atr_risk'
+                ? 'ATR风险仓位'
+                : pickString(summary, ['position_sizing']) === 'fixed'
+                  ? '固定比例'
+                  : '全额仓位',
+          },
+          {
             label: '择时风格',
             value:
               timingStyle === 'factor_dual'
                 ? '智能双评分'
                 : timingStyle === 'regime_reversion'
                   ? '综合趋势反转'
+                  : timingStyle === 'regime_reversion_legacy'
+                    ? '综合趋势反转旧版'
+                    : timingStyle === 'donchian_atr'
+                      ? 'Donchian + ATR'
+                      : timingStyle === 'ma_crossover_atr'
+                        ? '双均线 + ATR'
                   : timingStyle === 'rsi_bollinger'
                     ? 'RSI + 布林带反转'
                 : timingStyle === 'mean_reversion'
@@ -926,8 +1044,8 @@ export function TimingResultView({
         ]}
       />
       <div className="trade-ledger-note">
-        日线信号在当日收盘后生成，所有展示时间均按下一交易日（T+1）15:00
-        模拟成交，不代表真实盘中成交时间。
+        日线信号在当日15:00收盘后生成，统一按下一交易日（T+1）09:30
+        开盘价加滑点模拟成交；买入后最早在下一交易日开盘卖出。
       </div>
       <div className="chart-grid chart-grid--2">
         <Panel title="标的价格" subtitle="价格曲线与信号日期对照">
@@ -956,6 +1074,12 @@ export function TimingResultView({
         ) : (
           <ChartEmpty text="接口未返回综合得分轨迹" />
         )}
+      </Panel>
+      <Panel
+        title="入场条件漏斗"
+        subtitle="逐层展示候选、确认、下单与成交数量，定位信号在哪一步被过滤"
+      >
+        <EntryConditionFunnel summary={summary} />
       </Panel>
       {timingStyle === 'mean_reversion' ? (
         <Panel
@@ -1005,7 +1129,11 @@ export function TimingResultView({
           </Panel>
         </div>
       ) : null}
-      {['regime_reversion', 'rsi_bollinger'].includes(timingStyle ?? '') ? (
+      {[
+        'regime_reversion',
+        'regime_reversion_legacy',
+        'rsi_bollinger',
+      ].includes(timingStyle ?? '') ? (
         <>
           <div className="chart-grid chart-grid--2">
             <Panel
@@ -1068,6 +1196,38 @@ export function TimingResultView({
             </Panel>
           </div>
         </>
+      ) : null}
+      {timingStyle === 'donchian_atr' ? (
+        <Panel
+          title="Donchian通道与ATR止损"
+          subtitle="通道仅使用T-1及更早行情；止损由T日收盘确认后在T+1开盘执行"
+        >
+          {donchianOption ? (
+            <EChart
+              option={donchianOption}
+              ariaLabel="Donchian通道和ATR止损线"
+              height={340}
+            />
+          ) : (
+            <ChartEmpty text="接口未返回Donchian指标" />
+          )}
+        </Panel>
+      ) : null}
+      {timingStyle === 'ma_crossover_atr' ? (
+        <Panel
+          title="双均线与ATR止损"
+          subtitle="快慢均线交叉决定趋势方向，ATR控制止损和风险仓位"
+        >
+          {maCrossoverOption ? (
+            <EChart
+              option={maCrossoverOption}
+              ariaLabel="双均线和ATR止损线"
+              height={340}
+            />
+          ) : (
+            <ChartEmpty text="接口未返回双均线指标" />
+          )}
+        </Panel>
       ) : null}
       <Panel
         title="每日因子贡献"

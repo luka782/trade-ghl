@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from app.config import Settings
+from app.storage import Storage
 from app.validation import (
     ValidationProtocol,
     assert_locked_oos_excluded,
@@ -166,3 +168,26 @@ def test_walk_forward_tests_only_validation_winner() -> None:
     assert all(item["winner"] == 3 for item in results)
     assert sum(phase == "test" for _, phase in calls) == len(folds)
     assert all(candidate == 3 for candidate, phase in calls if phase == "test")
+
+
+def test_identical_completed_protocol_reuses_locked_oos(tmp_path) -> None:
+    storage = Storage(
+        Settings(
+            data_dir=tmp_path / "data",
+            db_path=tmp_path / "quant.sqlite3",
+        )
+    )
+    request = {"symbols": ["A", "B"], "protocol": {"locked": 12}}
+    storage.create_walk_forward_job("one", request)
+    storage.update_walk_forward_job(
+        "one", status="completed", progress=1.0, result={"ok": True}
+    )
+
+    reused = storage.find_completed_walk_forward_job(request)
+
+    assert reused is not None
+    assert reused["id"] == "one"
+    assert reused["result"] == {"ok": True}
+    assert storage.find_completed_walk_forward_job(
+        {"symbols": ["A", "C"], "protocol": {"locked": 12}}
+    ) is None

@@ -477,6 +477,38 @@ class Storage:
             "config": json.loads(row["config_json"]),
         }
 
+    def find_completed_walk_forward_job(
+        self, request: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """返回完全相同预注册请求的既有结果，避免重复查看锁定OOS。"""
+        canonical = json.dumps(
+            request,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, request_json
+                FROM timing_walk_forward_jobs
+                WHERE status = 'completed'
+                ORDER BY created_at DESC
+                """
+            ).fetchall()
+        for row in rows:
+            stored = json.dumps(
+                json.loads(row["request_json"]),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            )
+            if stored == canonical:
+                return self.get_walk_forward_job(str(row["id"]))
+        return None
+
     def create_walk_forward_job(
         self, job_id: str, request: dict[str, Any]
     ) -> dict[str, Any]:
