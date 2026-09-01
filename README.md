@@ -277,9 +277,12 @@ chmod 600 .env
 ```text
 SITE_ADDRESS=:80
 QUANT_HOST_DATA_ROOT=/data/quant
+PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 ```
 
 真实 `.env` 已被 Git 忽略，不要提交其中的域名或其他私密配置。
+大陆 ECS 默认通过阿里云 PyPI 镜像构建后端；Dockerfile 将第三方依赖放在
+业务源码之前缓存，因此只修改 `backend/app` 时不会重复下载全部 Python 包。
 
 ### 4. 构建、启动和检查
 
