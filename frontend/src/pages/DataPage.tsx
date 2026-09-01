@@ -457,7 +457,13 @@ export function DataPage() {
     setStockDetailStatus('loading')
     setStockDetailError('')
     try {
-      const response = await api.getStockBars(symbol, adjust, 250)
+      const response = await api.getStockBars(
+        symbol,
+        adjust,
+        2000,
+        form.startDate,
+        form.endDate,
+      )
       setStockDetail({
         ...response,
         name: response.name ?? universeNameBySymbol.get(symbol) ?? null,

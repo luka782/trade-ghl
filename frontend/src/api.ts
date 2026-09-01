@@ -129,10 +129,23 @@ export const api = {
     symbol: string,
     adjust: 'qfq' | 'none' = 'qfq',
     limit = 250,
-  ) =>
-    request<StockBarsResponse>(
-      `/data/stocks/${encodeURIComponent(symbol)}/bars?adjust=${adjust}&limit=${limit}`,
-    ),
+    startDate?: string,
+    endDate?: string,
+  ) => {
+    const params = new URLSearchParams({
+      adjust,
+      limit: String(limit),
+    })
+    if (startDate) {
+      params.set('start_date', startDate)
+    }
+    if (endDate) {
+      params.set('end_date', endDate)
+    }
+    return request<StockBarsResponse>(
+      `/data/stocks/${encodeURIComponent(symbol)}/bars?${params.toString()}`,
+    )
+  },
 
   getStocks: (limit = 20) =>
     request<StocksResponse>(`/data/stocks?limit=${encodeURIComponent(limit)}`),
