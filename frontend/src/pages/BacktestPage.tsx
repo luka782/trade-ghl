@@ -14,6 +14,7 @@ import {
   ChartEmpty,
   Field,
   MetricGrid,
+  NumberInput,
   PageHeader,
   Panel,
   StatePanel,
@@ -957,15 +958,14 @@ function SingleFactorBacktestPage() {
             <div className="form-grid form-grid--2">
               <Field label="持仓数量">
                 <div className="input-suffix">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={100}
                     value={form.topN}
-                    onChange={(event) =>
+                    onValueChange={(nextValue) =>
                       setForm((current) => ({
                         ...current,
-                        topN: Number(event.target.value),
+                        topN: nextValue,
                       }))
                     }
                   />
@@ -990,16 +990,15 @@ function SingleFactorBacktestPage() {
             </div>
             <div className="form-grid form-grid--3">
               <Field label="佣金率" hint="每笔最低 5 元">
-                <input
-                  type="number"
+                <NumberInput
                   min={0}
                   max={0.1}
                   step={0.0001}
                   value={form.commissionRate}
-                  onChange={(event) =>
+                  onValueChange={(nextValue) =>
                     setForm((current) => ({
                       ...current,
-                      commissionRate: Number(event.target.value),
+                      commissionRate: nextValue,
                     }))
                   }
                 />
@@ -1012,32 +1011,30 @@ function SingleFactorBacktestPage() {
                     : '卖出单边固定税率'
                 }
               >
-                <input
-                  type="number"
+                <NumberInput
                   min={0}
                   max={0.1}
                   step={0.0001}
                   value={form.stampDutyRate}
                   disabled={form.historicalStampDuty ?? true}
-                  onChange={(event) =>
+                  onValueChange={(nextValue) =>
                     setForm((current) => ({
                       ...current,
-                      stampDutyRate: Number(event.target.value),
+                      stampDutyRate: nextValue,
                     }))
                   }
                 />
               </Field>
               <Field label="滑点率">
-                <input
-                  type="number"
+                <NumberInput
                   min={0}
                   max={0.1}
                   step={0.0001}
                   value={form.slippageRate}
-                  onChange={(event) =>
+                  onValueChange={(nextValue) =>
                     setForm((current) => ({
                       ...current,
-                      slippageRate: Number(event.target.value),
+                      slippageRate: nextValue,
                     }))
                   }
                 />

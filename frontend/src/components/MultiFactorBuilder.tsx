@@ -18,7 +18,7 @@ import {
   TEMPLATE_LABELS,
 } from '../multifactorUtils'
 import { getErrorMessage, normalizeFactors } from '../utils'
-import { ButtonContent, Field, StatePanel } from './ui'
+import { ButtonContent, Field, NumberInput, StatePanel } from './ui'
 
 interface MultiFactorBuilderProps {
   value: MultiFactorConfig
@@ -316,18 +316,14 @@ export function MultiFactorBuilder({
               <option value="1">正向</option>
               <option value="-1">反向</option>
             </select>
-            <input
-              type="number"
+            <NumberInput
               step="0.05"
               aria-label={`${component.factor_name}权重`}
-              value={component.weight === 0 ? '' : component.weight}
+              value={component.weight}
               disabled={disabled || !component.enabled}
-              onChange={(event) =>
+              onValueChange={(nextValue) =>
                 updateComponent(component.factor_name, {
-                  weight:
-                    event.target.value === ''
-                      ? 0
-                      : Number(event.target.value),
+                  weight: nextValue,
                 })
               }
             />
@@ -368,47 +364,44 @@ export function MultiFactorBuilder({
         <summary>高级处理设置</summary>
         <div className="multifactor-advanced__global form-grid form-grid--3">
           <Field label="滚动窗口">
-            <input
-              type="number"
+            <NumberInput
               min={2}
               value={value.rolling_window}
               disabled={disabled}
-              onChange={(event) =>
+              onValueChange={(nextValue) =>
                 onChange({
                   ...value,
                   mode,
-                  rolling_window: Number(event.target.value),
+                  rolling_window: nextValue,
                 })
               }
             />
           </Field>
           <Field label="最少样本">
-            <input
-              type="number"
+            <NumberInput
               min={1}
               value={value.rolling_min_periods}
               disabled={disabled}
-              onChange={(event) =>
+              onValueChange={(nextValue) =>
                 onChange({
                   ...value,
                   mode,
-                  rolling_min_periods: Number(event.target.value),
+                  rolling_min_periods: nextValue,
                 })
               }
             />
           </Field>
           <Field label="Z-score 截断">
-            <input
-              type="number"
+            <NumberInput
               min={0}
               step={0.5}
               value={value.zscore_clip}
               disabled={disabled}
-              onChange={(event) =>
+              onValueChange={(nextValue) =>
                 onChange({
                   ...value,
                   mode,
-                  zscore_clip: Number(event.target.value),
+                  zscore_clip: nextValue,
                 })
               }
             />

@@ -14,6 +14,7 @@ import {
   ChartEmpty,
   Field,
   MetricGrid,
+  NumberInput,
   PageHeader,
   Panel,
   StatePanel,
@@ -317,15 +318,14 @@ export function MultiFactorResearchPage() {
               </Field>
               <Field label="远期周期">
                 <div className="input-suffix">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={60}
                     value={form.forwardPeriod}
-                    onChange={(event) =>
+                    onValueChange={(nextValue) =>
                       setForm((current) => ({
                         ...current,
-                        forwardPeriod: Number(event.target.value),
+                        forwardPeriod: nextValue,
                       }))
                     }
                   />
@@ -333,15 +333,14 @@ export function MultiFactorResearchPage() {
                 </div>
               </Field>
               <Field label="分组数量">
-                <input
-                  type="number"
+                <NumberInput
                   min={2}
                   max={10}
                   value={form.quantiles}
-                  onChange={(event) =>
+                  onValueChange={(nextValue) =>
                     setForm((current) => ({
                       ...current,
-                      quantiles: Number(event.target.value),
+                      quantiles: nextValue,
                     }))
                   }
                 />

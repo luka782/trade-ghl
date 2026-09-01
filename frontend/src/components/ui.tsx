@@ -1,4 +1,79 @@
-import type { ReactNode } from 'react'
+import { forwardRef, useLayoutEffect, useRef, useState } from 'react'
+import type {
+  ChangeEvent,
+  InputHTMLAttributes,
+  ReactNode,
+} from 'react'
+
+export interface NumberInputProps
+  extends Omit<
+    InputHTMLAttributes<HTMLInputElement>,
+    'defaultValue' | 'type' | 'value'
+  > {
+  value: number
+  onValueChange: (value: number) => void
+}
+
+function numberInputText(value: number) {
+  return Number.isFinite(value) ? String(value) : '0'
+}
+
+export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
+  function NumberInput(
+    { value, onValueChange, onChange, ...inputProps },
+    ref,
+  ) {
+    const [draft, setDraft] = useState(() => numberInputText(value))
+    const previousValueRef = useRef(value)
+    const justEmittedValueRef = useRef<number | undefined>(undefined)
+
+    useLayoutEffect(() => {
+      if (Object.is(value, previousValueRef.current)) {
+        return
+      }
+
+      previousValueRef.current = value
+      if (
+        justEmittedValueRef.current !== undefined &&
+        Object.is(value, justEmittedValueRef.current)
+      ) {
+        justEmittedValueRef.current = undefined
+        return
+      }
+
+      justEmittedValueRef.current = undefined
+      setDraft(numberInputText(value))
+    }, [value])
+
+    const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+      const nextDraft = event.target.value
+      setDraft(nextDraft)
+      onChange?.(event)
+
+      if (nextDraft.trim() === '') {
+        justEmittedValueRef.current = 0
+        onValueChange(0)
+        return
+      }
+
+      const nextValue = Number(nextDraft)
+      if (Number.isFinite(nextValue)) {
+        justEmittedValueRef.current = nextValue
+        onValueChange(nextValue)
+      }
+    }
+
+    return (
+      <input
+        {...inputProps}
+        ref={ref}
+        type="number"
+        value={draft}
+        onChange={handleChange}
+      />
+    )
+  },
+)
 
 export function PageHeader({
   eyebrow,

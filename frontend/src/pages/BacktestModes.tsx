@@ -7,6 +7,7 @@ import { TimingWalkForwardPanel } from '../components/TimingWalkForwardPanel'
 import {
   ButtonContent,
   Field,
+  NumberInput,
   PageHeader,
   Panel,
   StatePanel,
@@ -330,15 +331,14 @@ export function MultiFactorBacktestPage({
             </div>
             <div className="form-grid form-grid--2">
               <Field label="持仓数量（Top N）">
-                <input
-                  type="number"
+                <NumberInput
                   min={1}
                   max={Math.max(1, parseSymbols(form.symbols).length - 1)}
                   value={form.topN}
-                  onChange={(event) =>
+                  onValueChange={(nextValue) =>
                     setForm((current) => ({
                       ...current,
-                      topN: Number(event.target.value),
+                      topN: nextValue,
                     }))
                   }
                 />
@@ -364,44 +364,41 @@ export function MultiFactorBacktestPage({
               <div className="form-stack">
                 <div className="form-grid form-grid--3">
                   <Field label="佣金率">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       step={0.0001}
                       value={form.commissionRate}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         setForm((current) => ({
                           ...current,
-                          commissionRate: Number(event.target.value),
+                          commissionRate: nextValue,
                         }))
                       }
                     />
                   </Field>
                   <Field label="印花税率">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       step={0.0001}
                       value={form.stampDutyRate}
                       disabled={form.historicalStampDuty}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         setForm((current) => ({
                           ...current,
-                          stampDutyRate: Number(event.target.value),
+                          stampDutyRate: nextValue,
                         }))
                       }
                     />
                   </Field>
                   <Field label="滑点率">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       step={0.0001}
                       value={form.slippageRate}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         setForm((current) => ({
                           ...current,
-                          slippageRate: Number(event.target.value),
+                          slippageRate: nextValue,
                         }))
                       }
                     />
@@ -993,22 +990,20 @@ export function TimingBacktestPage() {
             {form.options.timing_style === 'trend' ? (
               <div className="form-grid form-grid--2">
                 <Field label="买入阈值">
-                  <input
-                    type="number"
+                  <NumberInput
                     step={0.1}
                     value={form.options.buy_threshold}
-                    onChange={(event) =>
-                      updateOption('buy_threshold', Number(event.target.value))
+                    onValueChange={(nextValue) =>
+                      updateOption('buy_threshold', nextValue)
                     }
                   />
                 </Field>
                 <Field label="卖出阈值">
-                  <input
-                    type="number"
+                  <NumberInput
                     step={0.1}
                     value={form.options.sell_threshold}
-                    onChange={(event) =>
-                      updateOption('sell_threshold', Number(event.target.value))
+                    onValueChange={(nextValue) =>
+                      updateOption('sell_threshold', nextValue)
                     }
                   />
                 </Field>
@@ -1020,67 +1015,61 @@ export function TimingBacktestPage() {
                 </div>
                 <div className="form-grid form-grid--2">
                   <Field label="RSI 周期">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={2}
                       value={form.options.rsi_period}
-                      onChange={(event) =>
-                        updateOption('rsi_period', Number(event.target.value))
+                      onValueChange={(nextValue) =>
+                        updateOption('rsi_period', nextValue)
                       }
                     />
                   </Field>
                   <Field label="RSI 超卖 / 超买">
                     <div className="timing-paired-input">
-                      <input
+                      <NumberInput
                         aria-label="RSI 超卖线"
-                        type="number"
                         value={form.options.rsi_oversold}
-                        onChange={(event) =>
-                          updateOption('rsi_oversold', Number(event.target.value))
+                        onValueChange={(nextValue) =>
+                          updateOption('rsi_oversold', nextValue)
                         }
                       />
                       <span>/</span>
-                      <input
+                      <NumberInput
                         aria-label="RSI 超买线"
-                        type="number"
                         value={form.options.rsi_overbought}
-                        onChange={(event) =>
-                          updateOption('rsi_overbought', Number(event.target.value))
+                        onValueChange={(nextValue) =>
+                          updateOption('rsi_overbought', nextValue)
                         }
                       />
                     </div>
                   </Field>
                   <Field label="布林带窗口">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={5}
                       value={form.options.bollinger_window}
-                      onChange={(event) =>
-                        updateOption('bollinger_window', Number(event.target.value))
+                      onValueChange={(nextValue) =>
+                        updateOption('bollinger_window', nextValue)
                       }
                     />
                   </Field>
                   <Field label="布林带标准差倍数">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0.1}
                       step={0.1}
                       value={form.options.bollinger_std}
-                      onChange={(event) =>
-                        updateOption('bollinger_std', Number(event.target.value))
+                      onValueChange={(nextValue) =>
+                        updateOption('bollinger_std', nextValue)
                       }
                     />
                   </Field>
                   <Field label="候选有效期">
                     <div className="input-suffix">
-                      <input
-                        type="number"
+                      <NumberInput
                         min={1}
                         value={form.options.setup_expiry_sessions}
-                        onChange={(event) =>
+                        onValueChange={(nextValue) =>
                           updateOption(
                             'setup_expiry_sessions',
-                            Number(event.target.value),
+                            nextValue,
                           )
                         }
                       />
@@ -1122,92 +1111,85 @@ export function TimingBacktestPage() {
                     </select>
                   </Field>
                   <Field label="长期 MA 周期">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={20}
                       value={form.options.ma_period}
-                      onChange={(event) =>
-                        updateOption('ma_period', Number(event.target.value))
+                      onValueChange={(nextValue) =>
+                        updateOption('ma_period', nextValue)
                       }
                     />
                   </Field>
                   <Field label="MA 斜率观察期">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={1}
                       value={form.options.ma_slope_period}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'ma_slope_period',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="RSI 周期">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={2}
                       value={form.options.rsi_period}
-                      onChange={(event) =>
-                        updateOption('rsi_period', Number(event.target.value))
+                      onValueChange={(nextValue) =>
+                        updateOption('rsi_period', nextValue)
                       }
                     />
                   </Field>
                   <Field label="RSI 超卖 / 超买">
                     <div className="timing-paired-input">
-                      <input
+                      <NumberInput
                         aria-label="RSI 超卖线"
-                        type="number"
                         min={0}
                         max={100}
                         value={form.options.rsi_oversold}
-                        onChange={(event) =>
+                        onValueChange={(nextValue) =>
                           updateOption(
                             'rsi_oversold',
-                            Number(event.target.value),
+                            nextValue,
                           )
                         }
                       />
                       <span>/</span>
-                      <input
+                      <NumberInput
                         aria-label="RSI 超买线"
-                        type="number"
                         min={0}
                         max={100}
                         value={form.options.rsi_overbought}
-                        onChange={(event) =>
+                        onValueChange={(nextValue) =>
                           updateOption(
                             'rsi_overbought',
-                            Number(event.target.value),
+                            nextValue,
                           )
                         }
                       />
                     </div>
                   </Field>
                   <Field label="布林带窗口">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={2}
                       value={form.options.bollinger_window}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'bollinger_window',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="布林带标准差倍数">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0.1}
                       step={0.1}
                       value={form.options.bollinger_std}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'bollinger_std',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
@@ -1227,13 +1209,12 @@ export function TimingBacktestPage() {
                         ] as const
                       ).map(([key, label]) => (
                         <Field label={label} key={key}>
-                          <input
-                            type="number"
+                          <NumberInput
                             min={0}
                             step={0.05}
                             value={form.options[key]}
-                            onChange={(event) =>
-                              updateOption(key, Number(event.target.value))
+                            onValueChange={(nextValue) =>
+                              updateOption(key, nextValue)
                             }
                           />
                         </Field>
@@ -1250,13 +1231,12 @@ export function TimingBacktestPage() {
                         ] as const
                       ).map(([key, label]) => (
                         <Field label={label} key={key}>
-                          <input
-                            type="number"
+                          <NumberInput
                             min={0}
                             step={0.05}
                             value={form.options[key]}
-                            onChange={(event) =>
-                              updateOption(key, Number(event.target.value))
+                            onValueChange={(nextValue) =>
+                              updateOption(key, nextValue)
                             }
                           />
                         </Field>
@@ -1266,30 +1246,28 @@ export function TimingBacktestPage() {
                 </details>
                 <div className="form-grid form-grid--2">
                   <Field label="买入位置上限">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       max={1}
                       step={0.05}
                       value={form.options.entry_max_price_position}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'entry_max_price_position',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="候选有效期">
                     <div className="input-suffix">
-                      <input
-                        type="number"
+                      <NumberInput
                         min={1}
                         value={form.options.setup_expiry_sessions}
-                        onChange={(event) =>
+                        onValueChange={(nextValue) =>
                           updateOption(
                             'setup_expiry_sessions',
-                            Number(event.target.value),
+                            nextValue,
                           )
                         }
                       />
@@ -1297,27 +1275,25 @@ export function TimingBacktestPage() {
                     </div>
                   </Field>
                   <Field label="最终买入分阈值">
-                    <input
-                      type="number"
+                    <NumberInput
                       step={0.05}
                       value={form.options.entry_score_threshold}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'entry_score_threshold',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="最终卖出风险阈值">
-                    <input
-                      type="number"
+                    <NumberInput
                       step={0.05}
                       value={form.options.exit_score_threshold}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'exit_score_threshold',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
@@ -1331,27 +1307,25 @@ export function TimingBacktestPage() {
                 </div>
                 <div className="form-grid form-grid--2">
                   <Field label="突破窗口">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={10}
                       value={form.options.donchian_entry_window}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'donchian_entry_window',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="退出窗口">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={5}
                       value={form.options.donchian_exit_window}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'donchian_exit_window',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
@@ -1381,40 +1355,37 @@ export function TimingBacktestPage() {
                 </div>
                 <div className="form-grid form-grid--3">
                   <Field label="快均线">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={2}
                       value={form.options.ma_fast_period}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'ma_fast_period',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="慢均线">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={5}
                       value={form.options.ma_slow_period}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'ma_slow_period',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="慢均线斜率期">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={1}
                       value={form.options.ma_slope_period}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'ma_slope_period',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
@@ -1428,60 +1399,56 @@ export function TimingBacktestPage() {
                 </div>
                 <div className="form-grid form-grid--2">
                   <Field label="低位候选区">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       max={1}
                       step={0.05}
                       value={form.options.low_zone_threshold}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'low_zone_threshold',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="低位反转确认">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       max={1}
                       step={0.05}
                       value={form.options.low_recovery_threshold}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'low_recovery_threshold',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="买入位置上限">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       max={1}
                       step={0.05}
                       value={form.options.entry_max_price_position}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'entry_max_price_position',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="低位形态有效期">
                     <div className="input-suffix">
-                      <input
-                        type="number"
+                      <NumberInput
                         min={1}
                         value={form.options.setup_expiry_sessions}
-                        onChange={(event) =>
+                        onValueChange={(nextValue) =>
                           updateOption(
                             'setup_expiry_sessions',
-                            Number(event.target.value),
+                            nextValue,
                           )
                         }
                       />
@@ -1489,42 +1456,39 @@ export function TimingBacktestPage() {
                     </div>
                   </Field>
                   <Field label="买入综合分阈值">
-                    <input
-                      type="number"
+                    <NumberInput
                       step={0.1}
                       value={form.options.entry_score_threshold}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'entry_score_threshold',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="卖出位置下限">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       max={1}
                       step={0.05}
                       value={form.options.exit_min_price_position}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'exit_min_price_position',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="卖出风险分阈值">
-                    <input
-                      type="number"
+                    <NumberInput
                       step={0.1}
                       value={form.options.exit_score_threshold}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'exit_score_threshold',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
@@ -1538,61 +1502,57 @@ export function TimingBacktestPage() {
                 </div>
                 <div className="form-grid form-grid--2">
                   <Field label="低位区" hint="默认处于60日区间底部20%">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       max={1}
                       step={0.05}
                       value={form.options.low_zone_threshold}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'low_zone_threshold',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="低位反转确认">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       max={1}
                       step={0.05}
                       value={form.options.low_recovery_threshold}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'low_recovery_threshold',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="高位转弱确认">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       max={1}
                       step={0.05}
                       value={form.options.high_reversal_threshold}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'high_reversal_threshold',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="高位区" hint="默认处于60日区间顶部20%">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       max={1}
                       step={0.05}
                       value={form.options.high_zone_threshold}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'high_zone_threshold',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
@@ -1605,39 +1565,36 @@ export function TimingBacktestPage() {
             ) ? (
               <div className="form-grid form-grid--3">
                 <Field label="ATR周期">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={2}
                     value={form.options.atr_period}
-                    onChange={(event) =>
-                      updateOption('atr_period', Number(event.target.value))
+                    onValueChange={(nextValue) =>
+                      updateOption('atr_period', nextValue)
                     }
                   />
                 </Field>
                 <Field label="ATR初始止损倍数">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0.1}
                     step={0.1}
                     value={form.options.atr_stop_multiple}
-                    onChange={(event) =>
+                    onValueChange={(nextValue) =>
                       updateOption(
                         'atr_stop_multiple',
-                        Number(event.target.value),
+                        nextValue,
                       )
                     }
                   />
                 </Field>
                 <Field label="ATR移动止损倍数">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0.1}
                     step={0.1}
                     value={form.options.atr_trailing_multiple}
-                    onChange={(event) =>
+                    onValueChange={(nextValue) =>
                       updateOption(
                         'atr_trailing_multiple',
-                        Number(event.target.value),
+                        nextValue,
                       )
                     }
                   />
@@ -1646,28 +1603,26 @@ export function TimingBacktestPage() {
             ) : (
               <div className="form-grid form-grid--2">
                 <Field label="固定止损" hint="小数，0.08 = 8%">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     max={1}
                     step={0.01}
                     value={form.options.fixed_stop}
-                    onChange={(event) =>
-                      updateOption('fixed_stop', Number(event.target.value))
+                    onValueChange={(nextValue) =>
+                      updateOption('fixed_stop', nextValue)
                     }
                   />
                 </Field>
                 <Field label="移动止损" hint="相对持仓高点">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     max={1}
                     step={0.01}
                     value={form.options.trailing_stop}
-                    onChange={(event) =>
+                    onValueChange={(nextValue) =>
                       updateOption(
                         'trailing_stop',
-                        Number(event.target.value),
+                        nextValue,
                       )
                     }
                   />
@@ -1693,31 +1648,29 @@ export function TimingBacktestPage() {
               {form.options.position_sizing === 'atr_risk' ? (
                 <>
                   <Field label="单笔风险" hint="0.01 = 账户权益1%">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0.001}
                       max={1}
                       step={0.005}
                       value={form.options.risk_per_trade}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'risk_per_trade',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="最大仓位比例">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0.01}
                       max={1}
                       step={0.05}
                       value={form.options.max_position_fraction}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'max_position_fraction',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
@@ -1725,16 +1678,15 @@ export function TimingBacktestPage() {
                 </>
               ) : form.options.position_sizing === 'fixed' ? (
                 <Field label="固定仓位比例">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0.01}
                     max={1}
                     step={0.05}
                     value={form.options.fixed_position_fraction}
-                    onChange={(event) =>
+                    onValueChange={(nextValue) =>
                       updateOption(
                         'fixed_position_fraction',
-                        Number(event.target.value),
+                        nextValue,
                       )
                     }
                   />
@@ -1744,14 +1696,13 @@ export function TimingBacktestPage() {
             <div className="form-grid form-grid--3">
               <Field label="最长持有">
                 <div className="input-suffix">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={1}
                     value={form.options.max_holding_sessions}
-                    onChange={(event) =>
+                    onValueChange={(nextValue) =>
                       updateOption(
                         'max_holding_sessions',
-                        Number(event.target.value),
+                        nextValue,
                       )
                     }
                   />
@@ -1763,14 +1714,13 @@ export function TimingBacktestPage() {
                 hint="0 = 买入日收盘可发出卖出信号，下一交易日开盘成交"
               >
                 <div className="input-suffix">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     value={form.options.minimum_holding_sessions}
-                    onChange={(event) =>
+                    onValueChange={(nextValue) =>
                       updateOption(
                         'minimum_holding_sessions',
-                        Number(event.target.value),
+                        nextValue,
                       )
                     }
                   />
@@ -1779,14 +1729,13 @@ export function TimingBacktestPage() {
               </Field>
               <Field label="冷却期">
                 <div className="input-suffix">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     value={form.options.cooldown_sessions}
-                    onChange={(event) =>
+                    onValueChange={(nextValue) =>
                       updateOption(
                         'cooldown_sessions',
-                        Number(event.target.value),
+                        nextValue,
                       )
                     }
                   />
@@ -1796,23 +1745,21 @@ export function TimingBacktestPage() {
             </div>
             <div className="form-grid form-grid--2">
               <Field label="初始资金">
-                <input
-                  type="number"
+                <NumberInput
                   min={1}
                   step={10000}
                   value={form.options.initial_capital}
-                  onChange={(event) =>
-                    updateOption('initial_capital', Number(event.target.value))
+                  onValueChange={(nextValue) =>
+                    updateOption('initial_capital', nextValue)
                   }
                 />
               </Field>
               <Field label="每手股数">
-                <input
-                  type="number"
+                <NumberInput
                   min={1}
                   value={form.options.lot_size}
-                  onChange={(event) =>
-                    updateOption('lot_size', Number(event.target.value))
+                  onValueChange={(nextValue) =>
+                    updateOption('lot_size', nextValue)
                   }
                 />
               </Field>
@@ -1822,43 +1769,40 @@ export function TimingBacktestPage() {
               <div className="form-stack">
                 <div className="form-grid form-grid--3">
                   <Field label="佣金率">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       step={0.0001}
                       value={form.options.commission_rate}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'commission_rate',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="最低佣金">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       step={1}
                       value={form.options.minimum_commission}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'minimum_commission',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="滑点率">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       step={0.0001}
                       value={form.options.slippage_rate}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'slippage_rate',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
@@ -1866,28 +1810,26 @@ export function TimingBacktestPage() {
                 </div>
                 <div className="form-grid form-grid--2">
                   <Field label="最小成交金额">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       step={100}
                       value={form.options.minimum_trade_notional}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'minimum_trade_notional',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
                   </Field>
                   <Field label="最大连续缺失交易日">
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       value={form.options.max_stale_sessions ?? 20}
-                      onChange={(event) =>
+                      onValueChange={(nextValue) =>
                         updateOption(
                           'max_stale_sessions',
-                          Number(event.target.value),
+                          nextValue,
                         )
                       }
                     />
