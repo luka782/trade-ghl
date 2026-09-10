@@ -1948,7 +1948,7 @@ export function TimingBacktestPage() {
                     <NumberInput
                       min={0.001}
                       max={1}
-                      step={0.005}
+                      step={0.001}
                       value={form.options.risk_per_trade}
                       onValueChange={(nextValue) =>
                         updateOption(
