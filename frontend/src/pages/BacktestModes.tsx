@@ -926,12 +926,102 @@ export function TimingBacktestPage() {
             >
               <select
                 value={form.options.timing_style}
-                onChange={(event) =>
-                  updateOption(
-                    'timing_style',
-                    event.target.value as TimingOptions['timing_style'],
-                  )
-                }
+                onChange={(event) => {
+                  const style = event.target.value as TimingOptions['timing_style']
+                  const styleDefaults: Record<string, Partial<TimingOptions>> = {
+                    trend: { buy_threshold: 0.7, sell_threshold: 0 },
+                    mean_reversion: {
+                      low_zone_threshold: 0.2,
+                      low_recovery_threshold: 0.25,
+                      high_reversal_threshold: 0.75,
+                      high_zone_threshold: 0.8,
+                    },
+                    factor_dual: {
+                      entry_score_threshold: 0.4,
+                      exit_score_threshold: 0.5,
+                      entry_max_price_position: 0.45,
+                      exit_min_price_position: 0.65,
+                      low_zone_threshold: 0.2,
+                      low_recovery_threshold: 0.25,
+                      setup_expiry_sessions: 30,
+                    },
+                    regime_reversion: {
+                      regime_entry_mode: 'confirmation_count',
+                      regime_confirmation_required: 2,
+                      entry_score_threshold: 0.4,
+                      exit_score_threshold: 0.5,
+                      entry_max_price_position: 0.45,
+                      exit_min_price_position: 0.65,
+                      ma_period: 200,
+                      rsi_period: 14,
+                      rsi_oversold: 30,
+                      rsi_overbought: 70,
+                      bollinger_window: 20,
+                      bollinger_std: 2,
+                    },
+                    regime_reversion_legacy: {
+                      regime_entry_mode: 'legacy_all',
+                      regime_confirmation_required: 3,
+                      entry_score_threshold: 0.4,
+                      exit_score_threshold: 0.5,
+                      ma_period: 200,
+                      rsi_period: 14,
+                      rsi_oversold: 30,
+                      rsi_overbought: 70,
+                      bollinger_window: 20,
+                      bollinger_std: 2,
+                    },
+                    rsi_bollinger: {
+                      rsi_period: 14,
+                      rsi_oversold: 30,
+                      rsi_overbought: 70,
+                      bollinger_window: 20,
+                      bollinger_std: 2,
+                      setup_expiry_sessions: 30,
+                    },
+                    donchian_atr: {
+                      donchian_entry_window: 55,
+                      donchian_exit_window: 20,
+                      donchian_trend_filter: false,
+                      atr_period: 20,
+                      atr_stop_multiple: 2,
+                      atr_trailing_multiple: 3,
+                      position_sizing: 'atr_risk',
+                    },
+                    ma_crossover_atr: {
+                      ma_fast_period: 20,
+                      ma_slow_period: 60,
+                      ma_slope_period: 20,
+                      atr_period: 20,
+                      atr_stop_multiple: 2,
+                      atr_trailing_multiple: 3,
+                      position_sizing: 'atr_risk',
+                    },
+                    rsrs: {
+                      rsrs_n: 18,
+                      rsrs_m: 600,
+                      rsrs_buy_threshold: 0.7,
+                      rsrs_sell_threshold: -0.7,
+                      fixed_stop: 0.08,
+                      trailing_stop: 0.1,
+                    },
+                    macd_signal: {
+                      macd_fast: 12,
+                      macd_slow: 26,
+                      macd_signal: 9,
+                      macd_volume_filter: true,
+                      fixed_stop: 0.08,
+                      trailing_stop: 0.1,
+                    },
+                    buy_and_hold: {},
+                    ma_200: { ma_period: 200 },
+                  }
+                  const overrides = styleDefaults[style] ?? {}
+                  setForm((current) => ({
+                    ...current,
+                    options: { ...current.options, timing_style: style, ...overrides },
+                  }))
+                }}
               >
                 <option value="trend">趋势跟随</option>
                 <option value="mean_reversion">低吸高抛</option>
