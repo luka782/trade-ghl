@@ -1454,7 +1454,10 @@ def create_app(
                     f"{normalized_symbol}."
                 ),
             )
-        bars = bars.sort_values("date").tail(limit).copy()
+        bars = bars.sort_values("date")
+        if start_date is None and end_date is None:
+            bars = bars.tail(limit)
+        bars = bars.copy()
         bars["change_pct"] = bars["close"] / bars["prev_close"] - 1.0
         columns = [
             "date",
