@@ -1973,6 +1973,8 @@ def run_timing(
                 "ma_crossover",
                 "buy_and_hold_entry",
                 "ma200_entry",
+                "rsrs_entry",
+                "macd_entry",
             }
             signal_row: dict[str, Any] = {
                 "symbol": symbol,
