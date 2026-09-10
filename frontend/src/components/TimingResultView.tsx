@@ -1039,11 +1039,17 @@ export function TimingResultView({
                       ? 'Donchian + ATR'
                       : timingStyle === 'ma_crossover_atr'
                         ? '双均线 + ATR'
-                  : timingStyle === 'rsi_bollinger'
-                    ? 'RSI + 布林带反转'
-                : timingStyle === 'mean_reversion'
-                  ? '低吸高抛'
-                  : '趋势跟随',
+                        : timingStyle === 'rsi_bollinger'
+                          ? 'RSI + 布林带反转'
+                          : timingStyle === 'rsrs'
+                            ? 'RSRS 阻力支撑'
+                            : timingStyle === 'macd_signal'
+                              ? 'MACD 信号'
+                              : timingStyle === 'buy_and_hold'
+                                ? '买入持有'
+                                : timingStyle === 'ma_200'
+                                  ? '长期均线'
+                                  : '趋势跟随',
           },
         ]}
       />
