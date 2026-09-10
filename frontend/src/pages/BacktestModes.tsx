@@ -495,7 +495,7 @@ export function MultiFactorBacktestPage({
 
 export function TimingBacktestPage() {
   const [form, setForm] = useSessionState<TimingForm>(
-    'aqmvp.timing.backtest.form.v8',
+    'aqmvp.timing.backtest.form.v9',
     () => ({
       symbol: '510300',
       startDate: yearsAgo(3),
