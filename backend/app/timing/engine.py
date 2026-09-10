@@ -1901,6 +1901,26 @@ def run_timing(
     equity_curve = pd.DataFrame(equity_rows)
     equity_curve["daily_return"] = equity_curve["equity"].pct_change(fill_method=None)
     metrics = calculate_metrics(equity_curve)
+
+    # 单标的择时没有多股票持仓快照，但前端持仓表仍需要数据；
+    # 从权益曲线生成简化持仓行，仅在持仓日输出，避免空表。
+    holding_rows: list[dict[str, Any]] = []
+    for row in equity_rows:
+        shares = int(row.get("raw_shares") or 0)
+        if shares <= 0:
+            continue
+        equity = float(row.get("equity") or 0)
+        position_value = float(row.get("position_value") or 0)
+        holding_rows.append(
+            {
+                "date": row["date"],
+                "symbol": symbol,
+                "quantity": shares,
+                "weight": (
+                    position_value / equity if equity > 0 else None
+                ),
+            }
+        )
     sell_trades = [trade for trade in trades if trade["side"] == "sell"]
     winning_returns = [
         float(trade["return"])
@@ -2014,6 +2034,9 @@ def run_timing(
         "summary": summary,
         "metrics": summary,
         "equity_curve": equity_curve.to_dict(orient="records"),
+        "annual_returns": metrics.get("annual_returns", []),
+        "benchmark_curve": metrics.get("benchmark_curve", []),
+        "holdings": holding_rows,
         "score_trace": score_trace,
         "signals": signals,
         "trades": trades,
