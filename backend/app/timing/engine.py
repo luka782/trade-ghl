@@ -89,6 +89,7 @@ _REASON_CN = {
     "rsrs_exit": "卖出_RSRS标准分下穿",
     "macd_entry": "买入_MACD金叉且放量",
     "macd_exit": "卖出_MACD死叉",
+    "chandelier_exit": "卖出_吊灯止损触发",
 }
 
 
@@ -130,6 +131,11 @@ class TimingConfig:
     high_zone_threshold: float = 0.80
     fixed_stop: float = 0.08
     trailing_stop: float = 0.10
+    # 吊灯止损：止损线 = 最近N日最高价 - 倍数×ATR，只上移不下移。
+    # 设为0时禁用吊灯止损，使用固定/移动止损。设为正数时吊灯止损优先于固定/移动止损。
+    chandelier_enabled: bool = False
+    chandelier_lookback: int = 22
+    chandelier_atr_multiple: float = 3.0
     donchian_entry_window: int = 55
     donchian_exit_window: int = 20
     donchian_trend_filter: bool = False
@@ -254,6 +260,10 @@ class TimingConfig:
             value = getattr(self, name)
             if not np.isfinite(value) or value <= 0:
                 raise ValueError(f"{name} must be positive")
+        if not np.isfinite(self.chandelier_atr_multiple) or self.chandelier_atr_multiple <= 0:
+            raise ValueError("chandelier_atr_multiple must be positive")
+        if self.chandelier_lookback < 1:
+            raise ValueError("chandelier_lookback must be positive")
         for name in (
             "fixed_position_fraction",
             "risk_per_trade",
@@ -655,6 +665,7 @@ def run_timing(
     entry_raw_notional = 0.0
     entry_total_cost = 0.0
     peak_adjusted_close = float("nan")
+    chandelier_stop = float("nan")
     last_exit_index: int | None = None
     stale_sessions = 0
     # pending 只保存 T 日收盘后形成的一笔待执行订单，并于下一交易日尝试成交，
@@ -791,6 +802,7 @@ def run_timing(
                     entry_raw_notional = notional
                     entry_total_cost = notional + commission
                     peak_adjusted_close = adjusted_open
+                    chandelier_stop = float("nan")
                     last_adjusted_close = adjusted_open
                     stale_sessions = 0
                     low_zone_armed = False
@@ -995,6 +1007,7 @@ def run_timing(
                     entry_raw_notional = 0.0
                     entry_total_cost = 0.0
                     peak_adjusted_close = float("nan")
+                    chandelier_stop = float("nan")
                     stale_sessions = 0
                     last_exit_index = index
                     high_zone_armed = False
@@ -1368,6 +1381,13 @@ def run_timing(
                 and np.isfinite(atr_value)
                 else None
             ),
+            "chandelier_stop_line": (
+                chandelier_stop
+                if raw_shares
+                and config.chandelier_enabled
+                and np.isfinite(chandelier_stop)
+                else None
+            ),
             "rsi_recovered": regime_rsi_recovered,
             "bollinger_recovered": regime_bollinger_recovered,
             "entry_candidate": (
@@ -1416,6 +1436,26 @@ def run_timing(
             # 新仓在本日开盘建立，日终立即按收盘价估值，使收益从成交开盘开始。
             last_adjusted_close = adjusted_close
             peak_adjusted_close = max(peak_adjusted_close, adjusted_close)
+
+        # 吊灯止损线：取最近 chandelier_lookback 个交易日的最高价减去倍数×ATR。
+        # 止损线只上移不下移（棘轮机制），趋势延续时越跟越高，正常回调不触发。
+        if (
+            raw_shares
+            and config.chandelier_enabled
+            and np.isfinite(atr_value)
+            and atr_value > 0
+        ):
+            lookback_start = max(0, index - config.chandelier_lookback + 1)
+            recent_high = float(
+                frame.iloc[lookback_start : index + 1]["high"].max()
+            )
+            if np.isfinite(recent_high) and recent_high > 0:
+                new_stop = recent_high - config.chandelier_atr_multiple * atr_value
+                chandelier_stop = (
+                    max(chandelier_stop, new_stop)
+                    if np.isfinite(chandelier_stop)
+                    else new_stop
+                )
 
         previous_score = (
             _number(frame.iloc[index - 1]["composite_score"])
@@ -1777,6 +1817,13 @@ def run_timing(
                     <= peak_adjusted_close
                     - config.atr_trailing_multiple * atr_value
                 )
+                chandelier_exit_hit = (
+                    config.chandelier_enabled
+                    and raw_shares
+                    and np.isfinite(adjusted_close)
+                    and np.isfinite(chandelier_stop)
+                    and adjusted_close <= chandelier_stop
+                )
                 score_exit = (
                     np.isfinite(previous_score)
                     and np.isfinite(score)
@@ -1896,6 +1943,7 @@ def run_timing(
                         ("trailing_stop", trailing_stop_hit),
                         ("atr_initial_stop", atr_initial_stop_hit),
                         ("atr_trailing_stop", atr_trailing_stop_hit),
+                        ("chandelier_exit", chandelier_exit_hit),
                         (
                             "score_cross_down",
                             config.timing_style == "trend" and score_exit,

@@ -61,6 +61,7 @@ const REASON_LABELS: Record<string, string> = {
   rsrs_exit: 'RSRS标准分下穿卖出阈值',
   macd_entry: 'MACD金叉且放量确认',
   macd_exit: 'MACD死叉',
+  chandelier_exit: '吊灯止损触发',
   bollinger_upper_reversal: '价格触及布林带上轨后转弱',
   long_ma_breakdown: '价格跌破长期均线且均线向下',
   final_entry_score: '最终买入分向上突破阈值',
@@ -879,6 +880,7 @@ export function TimingResultView({
       'donchian_lower',
       'atr_initial_stop_line',
       'atr_trailing_stop_line',
+      'chandelier_stop_line',
     ],
     {
       dashedKeys: [
@@ -886,6 +888,7 @@ export function TimingResultView({
         'donchian_lower',
         'atr_initial_stop_line',
         'atr_trailing_stop_line',
+        'chandelier_stop_line',
       ],
     },
   )
@@ -897,6 +900,7 @@ export function TimingResultView({
       'ma_slow',
       'atr_initial_stop_line',
       'atr_trailing_stop_line',
+      'chandelier_stop_line',
     ],
     {
       dashedKeys: [
@@ -904,6 +908,7 @@ export function TimingResultView({
         'ma_slow',
         'atr_initial_stop_line',
         'atr_trailing_stop_line',
+        'chandelier_stop_line',
       ],
     },
   )

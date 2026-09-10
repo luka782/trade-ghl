@@ -225,6 +225,9 @@ class TimingOptions(StrictModel):
     high_zone_threshold: float = Field(default=0.80, ge=0, le=1)
     fixed_stop: float = Field(default=0.08, ge=0, lt=1)
     trailing_stop: float = Field(default=0.10, ge=0, lt=1)
+    chandelier_enabled: bool = False
+    chandelier_lookback: int = Field(default=22, ge=2, le=120)
+    chandelier_atr_multiple: float = Field(default=3.0, gt=0, le=20)
     donchian_entry_window: int = Field(default=55, ge=10, le=252)
     donchian_exit_window: int = Field(default=20, ge=5, le=252)
     donchian_trend_filter: bool = False

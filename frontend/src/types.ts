@@ -435,6 +435,9 @@ export interface TimingOptions {
   high_zone_threshold: number
   fixed_stop: number
   trailing_stop: number
+  chandelier_enabled: boolean
+  chandelier_lookback: number
+  chandelier_atr_multiple: number
   max_holding_sessions: number
   minimum_holding_sessions: number
   cooldown_sessions: number

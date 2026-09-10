@@ -518,6 +518,9 @@ export function TimingBacktestPage() {
         high_zone_threshold: 0.8,
         fixed_stop: 0.08,
         trailing_stop: 0.1,
+        chandelier_enabled: false,
+        chandelier_lookback: 22,
+        chandelier_atr_multiple: 3.0,
         max_holding_sessions: 365,
         minimum_holding_sessions: 0,
         cooldown_sessions: 0,
@@ -1934,6 +1937,51 @@ export function TimingBacktestPage() {
                 </Field>
               </div>
             )}
+            <Field label="吊灯止损" hint="ATR自适应棘轮止损，趋势中持有更久">
+              <select
+                value={
+                  form.options.chandelier_enabled ? 'enabled' : 'disabled'
+                }
+                onChange={(event) =>
+                  updateOption(
+                    'chandelier_enabled',
+                    event.target.value === 'enabled',
+                  )
+                }
+              >
+                <option value="disabled">关闭（使用固定/移动止损）</option>
+                <option value="enabled">启用吊灯止损</option>
+              </select>
+            </Field>
+            {form.options.chandelier_enabled ? (
+              <div className="form-grid form-grid--2">
+                <Field label="回看周期" hint="取最近N日最高价">
+                  <NumberInput
+                    min={2}
+                    value={form.options.chandelier_lookback}
+                    onValueChange={(nextValue) =>
+                      updateOption(
+                        'chandelier_lookback',
+                        nextValue,
+                      )
+                    }
+                  />
+                </Field>
+                <Field label="ATR倍数" hint="止损线=最高价-N×ATR">
+                  <NumberInput
+                    min={0.5}
+                    step={0.5}
+                    value={form.options.chandelier_atr_multiple}
+                    onValueChange={(nextValue) =>
+                      updateOption(
+                        'chandelier_atr_multiple',
+                        nextValue,
+                      )
+                    }
+                  />
+                </Field>
+              </div>
+            ) : null}
             <div className="form-grid form-grid--3">
               <Field label="仓位模型">
                 <select
