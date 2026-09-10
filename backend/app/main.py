@@ -1882,8 +1882,8 @@ def create_app(
         result.update(
             {
                 "id": run_id,
-                "factor_name": factor.metadata.name,
-                "factor_name_zh": config.name,
+                "factor_name": f"{config.name} 选股",
+                "factor_name_zh": f"{config.name} 选股",
                 "config_id": config.config_id,
                 "config_snapshot": config.snapshot(),
                 "correlation_report": diagnostics,
@@ -2210,42 +2210,12 @@ def create_app(
                 "symbol": body.symbol,
                 "name": instrument_name,
                 "factor_name": (
-                    options.timing_style
-                    if options.timing_style
-                    in {"donchian_atr", "ma_crossover_atr"}
-                    else factor.metadata.name
-                    if options.timing_style
-                    not in {
-                        "factor_dual",
-                        "regime_reversion",
-                        "regime_reversion_legacy",
-                    }
-                    else (
-                        f"{options.timing_style}_{entry_config.config_id}_"
-                        f"{exit_config.config_id}"
-                    )
+                    f"{instrument_name or body.symbol} "
+                    f"{options.timing_style} 单标"
                 ),
                 "factor_name_zh": (
-                    "Donchian突破 + ATR"
-                    if options.timing_style == "donchian_atr"
-                    else "双均线趋势 + ATR"
-                    if options.timing_style == "ma_crossover_atr"
-                    else config.name
-                    if options.timing_style
-                    not in {
-                        "factor_dual",
-                        "regime_reversion",
-                        "regime_reversion_legacy",
-                    }
-                    else (
-                        "综合趋势反转"
-                        if options.timing_style
-                        in {
-                            "regime_reversion",
-                            "regime_reversion_legacy",
-                        }
-                        else "智能双评分择时"
-                    )
+                    f"{instrument_name or body.symbol} "
+                    f"{options.timing_style} 单标"
                 ),
                 "config_id": config.config_id,
                 "config_snapshot": config.snapshot(),
