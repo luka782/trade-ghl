@@ -178,8 +178,7 @@ export function formatPercent(
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return '—'
   }
-  const normalized = Math.abs(value) > 2 ? value : value * 100
-  return `${formatNumber(normalized, digits)}%`
+  return `${formatNumber(value * 100, digits)}%`
 }
 
 export function formatDateTime(value: unknown): string {
