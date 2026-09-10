@@ -11,6 +11,8 @@ const MODELS = [
   { keys: ['regime_reversion', 'combined'], label: '综合趋势反转新版' },
   { keys: ['donchian_atr'], label: 'Donchian + ATR' },
   { keys: ['ma_crossover_atr'], label: '双均线 + ATR' },
+  { keys: ['rsrs'], label: 'RSRS 阻力支撑' },
+  { keys: ['macd_signal'], label: 'MACD 信号' },
 ] as const
 
 function comparisonRows(source: unknown): Record<string, unknown>[] {

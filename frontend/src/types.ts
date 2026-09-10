@@ -420,6 +420,8 @@ export interface TimingOptions {
     | 'ma_crossover_atr'
     | 'buy_and_hold'
     | 'ma_200'
+    | 'rsrs'
+    | 'macd_signal'
   buy_threshold: number
   sell_threshold: number
   entry_score_threshold: number
@@ -468,6 +470,14 @@ export interface TimingOptions {
   atr_period: number
   atr_stop_multiple: number
   atr_trailing_multiple: number
+  rsrs_n: number
+  rsrs_m: number
+  rsrs_buy_threshold: number
+  rsrs_sell_threshold: number
+  macd_fast: number
+  macd_slow: number
+  macd_signal: number
+  macd_volume_filter: boolean
   position_sizing: 'full' | 'fixed' | 'atr_risk'
   fixed_position_fraction: number
   risk_per_trade: number

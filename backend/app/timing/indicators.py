@@ -285,6 +285,121 @@ def donchian_channels(
     )
 
 
+def rsrs_zscore(
+    bars: pd.DataFrame,
+    n: int = 18,
+    m: int = 600,
+) -> pd.Series:
+    """计算阻力支撑相对强度（RSRS）标准分。
+
+    在 N 日窗口内用最高价对最低价做 OLS 回归得到斜率 β，
+    再在 M 日窗口对 β 序列做 Z-Score 标准化。β 越高说明支撑强于阻力，
+    适合做多；β 越低说明阻力强于支撑，适合做空或空仓。
+    所有计算按 symbol 分组、按 date 排序，不读取未来行。
+    """
+    _validate_inputs(bars, window=n, price_column="close")
+    for col in ("high", "low"):
+        if col not in bars.columns:
+            raise ValueError(
+                f"RSRS input is missing required column: {col}"
+            )
+    ordered, _ = _ordered_prices(bars, "close")
+    high = pd.to_numeric(ordered["high"], errors="coerce")
+    low = pd.to_numeric(ordered["low"], errors="coerce")
+
+    def _rsrs_for_group(h: pd.Series, l: pd.Series) -> pd.Series:
+        slopes = np.full(len(h), np.nan, dtype=float)
+        values_h = h.to_numpy(dtype=float)
+        values_l = l.to_numpy(dtype=float)
+        finite = np.isfinite(values_h) & np.isfinite(values_l)
+        start = 0
+        while start < len(h):
+            while start < len(h) and not finite[start]:
+                start += 1
+            end = start
+            while end < len(h) and finite[end]:
+                end += 1
+            for i in range(start + n, end):
+                window_h = values_h[i - n : i]
+                window_l = values_l[i - n : i]
+                if np.all(np.isfinite(window_h)) and np.all(
+                    np.isfinite(window_l)
+                ):
+                    x = window_l - window_l.mean()
+                    y = window_h - window_h.mean()
+                    denom = float((x * x).sum())
+                    if denom > 0:
+                        slopes[i] = float((x * y).sum() / denom)
+            start = end + 1
+        return pd.Series(slopes, index=h.index, dtype=float)
+
+    betas = high.groupby(ordered["symbol"], sort=False).transform(
+        lambda h: _rsrs_for_group(h, low.groupby(ordered["symbol"], sort=False).first().reindex(h.index) if False else h)
+    )
+    # 修正：按 symbol 分组分别传 high 和 low
+    betas = pd.Series(np.nan, index=ordered.index, dtype=float)
+    for _sym, idx in ordered.groupby("symbol", sort=False).groups.items():
+        h = high.loc[idx]
+        l = low.loc[idx]
+        betas.loc[idx] = _rsrs_for_group(h, l)
+
+    # M 日窗口 Z-Score
+    zscore = betas.groupby(ordered["symbol"], sort=False).transform(
+        lambda b: (b - b.rolling(m, min_periods=m).mean())
+        / b.rolling(m, min_periods=m).std(ddof=0)
+    )
+    return _restore_order(bars, ordered, zscore)
+
+
+def macd(
+    bars: pd.DataFrame,
+    fast: int = 12,
+    slow: int = 26,
+    signal: int = 9,
+) -> pd.DataFrame:
+    """计算 MACD 柱状图（DIF - DEA）。
+
+    DIF = EMA(fast) - EMA(slow)
+    DEA = EMA(DIF, signal)
+    MACD柱 = (DIF - DEA) * 2
+    按symbol分组、按date排序，不读取未来行。
+    """
+    _validate_inputs(bars, window=fast, price_column="close")
+    if slow <= fast:
+        raise ValueError("slow must be greater than fast")
+    if signal < 1:
+        raise ValueError("signal must be positive")
+    ordered, close = _ordered_prices(bars, "close")
+
+    def _ema_for_group(prices: pd.Series, span: int) -> pd.Series:
+        return prices.ewm(span=span, adjust=False).mean()
+
+    def _calc(prices: pd.Series) -> pd.DataFrame:
+        dif = _ema_for_group(prices, fast) - _ema_for_group(prices, slow)
+        dea = _ema_for_group(dif, signal)
+        hist = (dif - dea) * 2.0
+        return pd.DataFrame(
+            {"dif": dif, "dea": dea, "hist": hist},
+            index=prices.index,
+        )
+
+    groups = close.groupby(ordered["symbol"], sort=False)
+    frames = []
+    for _sym, idx in groups.groups.items():
+        frames.append(_calc(close.loc[idx]))
+    ordered_result = pd.concat(frames).sort_index()
+
+    result = pd.DataFrame(
+        {
+            "macd_dif": _restore_order(bars, ordered, ordered_result["dif"]),
+            "macd_dea": _restore_order(bars, ordered, ordered_result["dea"]),
+            "macd_hist": _restore_order(bars, ordered, ordered_result["hist"]),
+        },
+        index=bars.index,
+    )
+    return result
+
+
 ma = moving_average
 ma_slope = moving_average_slope
 distance_to_ma = distance_to_moving_average
@@ -299,8 +414,10 @@ __all__ = [
     "distance_to_moving_average",
     "ma",
     "ma_slope",
+    "macd",
     "moving_average",
     "moving_average_slope",
     "rsi",
+    "rsrs_zscore",
     "wilder_rsi",
 ]

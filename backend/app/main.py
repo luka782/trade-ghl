@@ -47,8 +47,10 @@ from .timing.indicators import (
     bollinger_bands,
     distance_to_moving_average,
     donchian_channels,
+    macd,
     moving_average,
     moving_average_slope,
+    rsrs_zscore,
     wilder_rsi,
 )
 from .validation.diagnostics import (
@@ -324,6 +326,20 @@ def _attach_timing_indicator_columns(
         frame["ma_200"] = moving_average(
             frame, options.ma_period
         )
+    elif options.timing_style == "rsrs":
+        frame["rsrs_zscore"] = rsrs_zscore(
+            frame, options.rsrs_n, options.rsrs_m
+        )
+    elif options.timing_style == "macd_signal":
+        macd_result = macd(
+            frame,
+            options.macd_fast,
+            options.macd_slow,
+            options.macd_signal,
+        )
+        frame["macd_dif"] = macd_result["macd_dif"]
+        frame["macd_dea"] = macd_result["macd_dea"]
+        frame["macd_hist"] = macd_result["macd_hist"]
     return frame
 
 
@@ -871,6 +887,12 @@ def _run_walk_forward_research(
             ),
             "ma_crossover_atr": body.options.model_copy(
                 update={"timing_style": "ma_crossover_atr"}
+            ),
+            "rsrs": body.options.model_copy(
+                update={"timing_style": "rsrs"}
+            ),
+            "macd_signal": body.options.model_copy(
+                update={"timing_style": "macd_signal"}
             ),
         }
         # 最终选中候选的风格可能不是 regime_reversion；
@@ -1997,6 +2019,16 @@ def create_app(
             required_lookback = max(
                 required_lookback,
                 options.ma_period,
+            )
+        elif options.timing_style == "rsrs":
+            required_lookback = max(
+                required_lookback,
+                options.rsrs_m + options.rsrs_n,
+            )
+        elif options.timing_style == "macd_signal":
+            required_lookback = max(
+                required_lookback,
+                options.macd_slow + options.macd_signal,
             )
         panel, missing = _load_panel(
             application.state.storage,

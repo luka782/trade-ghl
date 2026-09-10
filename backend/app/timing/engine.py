@@ -40,6 +40,8 @@ TimingStyle = Literal[
     "ma_crossover_atr",
     "buy_and_hold",
     "ma_200",
+    "rsrs",
+    "macd_signal",
 ]
 
 _PRICE_COLUMNS = (
@@ -83,6 +85,10 @@ _REASON_CN = {
     "ma200_exit": "卖出_价格跌破MA200",
     "atr_initial_stop": "卖出_ATR初始止损",
     "atr_trailing_stop": "卖出_ATR移动止损",
+    "rsrs_entry": "买入_RSRS标准分上穿",
+    "rsrs_exit": "卖出_RSRS标准分下穿",
+    "macd_entry": "买入_MACD金叉且放量",
+    "macd_exit": "卖出_MACD死叉",
 }
 
 
@@ -132,6 +138,14 @@ class TimingConfig:
     atr_period: int = 20
     atr_stop_multiple: float = 2.0
     atr_trailing_multiple: float = 3.0
+    rsrs_n: int = 18
+    rsrs_m: int = 600
+    rsrs_buy_threshold: float = 0.7
+    rsrs_sell_threshold: float = -0.7
+    macd_fast: int = 12
+    macd_slow: int = 26
+    macd_signal: int = 9
+    macd_volume_filter: bool = True
     max_holding_sessions: int = 60
     # 0 表示允许买入日收盘形成卖出信号，并在下一交易日开盘执行（A股 T+1）。
     # 更大的值是策略主动延长最短持有期，而不是成交制度要求。
@@ -164,11 +178,14 @@ class TimingConfig:
             "ma_crossover_atr",
             "buy_and_hold",
             "ma_200",
+            "rsrs",
+            "macd_signal",
         }:
             raise ValueError(
                 "timing_style must be trend, mean_reversion, factor_dual, "
                 "regime_reversion, regime_reversion_legacy, rsi_bollinger, "
-                "donchian_atr, ma_crossover_atr, buy_and_hold, or ma_200"
+                "donchian_atr, ma_crossover_atr, buy_and_hold, ma_200, "
+                "rsrs, or macd_signal"
             )
         if self.regime_entry_mode not in {
             "legacy_all",
@@ -223,6 +240,11 @@ class TimingConfig:
             "ma_fast_period",
             "ma_slow_period",
             "atr_period",
+            "rsrs_n",
+            "rsrs_m",
+            "macd_fast",
+            "macd_slow",
+            "macd_signal",
         ):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be positive")
@@ -598,6 +620,8 @@ def run_timing(
             "ma_slow_slope",
         ),
         "ma_200": ("ma_200",),
+        "rsrs": ("rsrs_zscore",),
+        "macd_signal": ("macd_dif", "macd_dea", "macd_hist"),
     }
     missing_strategy = [
         column
@@ -1499,6 +1523,74 @@ def run_timing(
             and _valid_price(row.get("ma_200"))
             and adjusted_close > _number(row.get("ma_200"))
         )
+        rsrs_value = (
+            _number(row.get("rsrs_zscore"))
+            if "rsrs_zscore" in row
+            else float("nan")
+        )
+        previous_rsrs = (
+            _number(frame.iloc[index - 1]["rsrs_zscore"])
+            if index > 0 and "rsrs_zscore" in frame
+            else float("nan")
+        )
+        rsrs_buy = (
+            config.timing_style == "rsrs"
+            and np.isfinite(rsrs_value)
+            and np.isfinite(previous_rsrs)
+            and previous_rsrs <= config.rsrs_buy_threshold
+            and rsrs_value > config.rsrs_buy_threshold
+        )
+        macd_dif = (
+            _number(row.get("macd_dif"))
+            if "macd_dif" in row
+            else float("nan")
+        )
+        macd_dea = (
+            _number(row.get("macd_dea"))
+            if "macd_dea" in row
+            else float("nan")
+        )
+        previous_macd_dif = (
+            _number(frame.iloc[index - 1]["macd_dif"])
+            if index > 0 and "macd_dif" in frame
+            else float("nan")
+        )
+        previous_macd_dea = (
+            _number(frame.iloc[index - 1]["macd_dea"])
+            if index > 0 and "macd_dea" in frame
+            else float("nan")
+        )
+        macd_volume = (
+            _number(row.get("volume") if "volume" in row else row.get("trade_volume"))
+            if ("volume" in row or "trade_volume" in row)
+            else float("nan")
+        )
+        previous_macd_volume = (
+            _number(frame.iloc[index - 1].get("volume", frame.iloc[index - 1].get("trade_volume", 0)))
+            if index > 0
+            else float("nan")
+        )
+        macd_golden_cross = (
+            np.isfinite(previous_macd_dif)
+            and np.isfinite(previous_macd_dea)
+            and np.isfinite(macd_dif)
+            and np.isfinite(macd_dea)
+            and previous_macd_dif <= previous_macd_dea
+            and macd_dif > macd_dea
+        )
+        macd_volume_ok = (
+            not config.macd_volume_filter
+            or (
+                np.isfinite(macd_volume)
+                and np.isfinite(previous_macd_volume)
+                and macd_volume > previous_macd_volume
+            )
+        )
+        macd_buy = (
+            config.timing_style == "macd_signal"
+            and macd_golden_cross
+            and macd_volume_ok
+        )
         if config.timing_style == "donchian_atr":
             entry_funnel["indicator_ready"] += int(
                 np.isfinite(donchian_upper) and np.isfinite(atr_value)
@@ -1524,6 +1616,23 @@ def run_timing(
             entry_funnel["confirmation_passed"] += int(
                 ma_crossover_buy
             )
+        elif config.timing_style == "rsrs":
+            entry_funnel["indicator_ready"] += int(np.isfinite(rsrs_value))
+            entry_funnel["candidate_zone"] += int(
+                np.isfinite(previous_rsrs)
+                and previous_rsrs <= config.rsrs_buy_threshold
+            )
+            entry_funnel["regime_allowed"] += 1
+            entry_funnel["price_allowed"] += 1
+            entry_funnel["confirmation_passed"] += int(rsrs_buy)
+        elif config.timing_style == "macd_signal":
+            entry_funnel["indicator_ready"] += int(
+                all(np.isfinite(v) for v in (macd_dif, macd_dea))
+            )
+            entry_funnel["candidate_zone"] += int(macd_golden_cross)
+            entry_funnel["regime_allowed"] += int(macd_volume_ok)
+            entry_funnel["price_allowed"] += int(macd_golden_cross)
+            entry_funnel["confirmation_passed"] += int(macd_buy)
         if (
             pending is None
             and raw_shares == 0
@@ -1537,6 +1646,8 @@ def run_timing(
                 or ma_crossover_buy
                 or buy_and_hold_buy
                 or ma200_buy
+                or rsrs_buy
+                or macd_buy
             )
         ):
             reason_keys = [
@@ -1561,9 +1672,13 @@ def run_timing(
                                         "ma_crossover"
                                         if ma_crossover_buy
                                         else (
-                                            "buy_and_hold_entry"
-                                            if buy_and_hold_buy
-                                            else "ma200_entry"
+                                        "buy_and_hold_entry"
+                                        if buy_and_hold_buy
+                                        else "ma200_entry"
+                                        if ma200_buy
+                                        else "rsrs_entry"
+                                        if rsrs_buy
+                                        else "macd_entry"
                                         )
                                     )
                                 )
@@ -1626,6 +1741,8 @@ def run_timing(
                 signal_only_baseline = config.timing_style in {
                     "buy_and_hold",
                     "ma_200",
+                    "rsrs",
+                    "macd_signal",
                 }
                 fixed_stop_hit = (
                     not cta_style
@@ -1751,6 +1868,22 @@ def run_timing(
                     and _valid_price(row.get("ma_200"))
                     and adjusted_close < _number(row.get("ma_200"))
                 )
+                rsrs_exit_signal = (
+                    config.timing_style == "rsrs"
+                    and np.isfinite(rsrs_value)
+                    and np.isfinite(previous_rsrs)
+                    and previous_rsrs >= config.rsrs_sell_threshold
+                    and rsrs_value < config.rsrs_sell_threshold
+                )
+                macd_death_cross = (
+                    config.timing_style == "macd_signal"
+                    and np.isfinite(previous_macd_dif)
+                    and np.isfinite(previous_macd_dea)
+                    and np.isfinite(macd_dif)
+                    and np.isfinite(macd_dea)
+                    and previous_macd_dif >= previous_macd_dea
+                    and macd_dif < macd_dea
+                )
                 max_holding_exit = (
                     config.timing_style != "buy_and_hold"
                     and held_sessions >= config.max_holding_sessions
@@ -1783,6 +1916,8 @@ def run_timing(
                         ("donchian_exit", donchian_channel_exit),
                         ("ma_crossdown", ma_cross_exit),
                         ("ma200_exit", ma200_exit),
+                        ("rsrs_exit", rsrs_exit_signal),
+                        ("macd_exit", macd_death_cross),
                         ("max_holding", max_holding_exit),
                         ("stale_data", stale_exit),
                     )

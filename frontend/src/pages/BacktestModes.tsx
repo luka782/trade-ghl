@@ -553,6 +553,14 @@ export function TimingBacktestPage() {
         atr_period: 20,
         atr_stop_multiple: 2,
         atr_trailing_multiple: 3,
+        rsrs_n: 18,
+        rsrs_m: 600,
+        rsrs_buy_threshold: 0.7,
+        rsrs_sell_threshold: -0.7,
+        macd_fast: 12,
+        macd_slow: 26,
+        macd_signal: 9,
+        macd_volume_filter: true,
         position_sizing: 'atr_risk',
         fixed_position_fraction: 0.5,
         risk_per_trade: 0.01,
@@ -935,6 +943,8 @@ export function TimingBacktestPage() {
                 <option value="rsi_bollinger">RSI + 布林带反转</option>
                 <option value="donchian_atr">Donchian 突破 + ATR</option>
                 <option value="ma_crossover_atr">双均线趋势 + ATR</option>
+                <option value="rsrs">RSRS 阻力支撑强度</option>
+                <option value="macd_signal">MACD 信号 + 放量过滤</option>
               </select>
             </Field>
             {['factor_dual', 'regime_reversion', 'regime_reversion_legacy'].includes(
@@ -1387,6 +1397,108 @@ export function TimingBacktestPage() {
                     />
                   </Field>
                 </div>
+              </>
+            ) : form.options.timing_style === 'rsrs' ? (
+              <>
+                <div className="form-note">
+                  阻力支撑相对强度：用最高价对最低价回归斜率做Z-Score，
+                  上穿买入阈值后买入，下穿卖出阈值后卖出。
+                </div>
+                <div className="form-grid form-grid--2">
+                  <Field label="回归窗口N">
+                    <NumberInput
+                      min={2}
+                      value={form.options.rsrs_n}
+                      onValueChange={(nextValue) =>
+                        updateOption('rsrs_n', nextValue)
+                      }
+                    />
+                  </Field>
+                  <Field label="标准化窗口M">
+                    <NumberInput
+                      min={60}
+                      value={form.options.rsrs_m}
+                      onValueChange={(nextValue) =>
+                        updateOption('rsrs_m', nextValue)
+                      }
+                    />
+                  </Field>
+                  <Field label="买入阈值">
+                    <NumberInput
+                      step={0.1}
+                      value={form.options.rsrs_buy_threshold}
+                      onValueChange={(nextValue) =>
+                        updateOption(
+                          'rsrs_buy_threshold',
+                          nextValue,
+                        )
+                      }
+                    />
+                  </Field>
+                  <Field label="卖出阈值">
+                    <NumberInput
+                      step={0.1}
+                      value={form.options.rsrs_sell_threshold}
+                      onValueChange={(nextValue) =>
+                        updateOption(
+                          'rsrs_sell_threshold',
+                          nextValue,
+                        )
+                      }
+                    />
+                  </Field>
+                </div>
+              </>
+            ) : form.options.timing_style === 'macd_signal' ? (
+              <>
+                <div className="form-note">
+                  MACD金叉且放量时买入，死叉时卖出。可关闭放量过滤仅用金叉/死叉。
+                </div>
+                <div className="form-grid form-grid--3">
+                  <Field label="快线周期">
+                    <NumberInput
+                      min={2}
+                      value={form.options.macd_fast}
+                      onValueChange={(nextValue) =>
+                        updateOption('macd_fast', nextValue)
+                      }
+                    />
+                  </Field>
+                  <Field label="慢线周期">
+                    <NumberInput
+                      min={5}
+                      value={form.options.macd_slow}
+                      onValueChange={(nextValue) =>
+                        updateOption('macd_slow', nextValue)
+                      }
+                    />
+                  </Field>
+                  <Field label="信号线周期">
+                    <NumberInput
+                      min={2}
+                      value={form.options.macd_signal}
+                      onValueChange={(nextValue) =>
+                        updateOption('macd_signal', nextValue)
+                      }
+                    />
+                  </Field>
+                </div>
+                <Field label="放量过滤">
+                  <select
+                    value={
+                      form.options.macd_volume_filter ? 'enabled' : 'disabled'
+                    }
+                    onChange={(event) =>
+                      updateOption(
+                        'macd_volume_filter',
+                        event.target.value === 'enabled',
+                      )
+                    }
+                  >
+                    <option value="enabled">金叉需放量确认</option>
+                    <option value="disabled">仅金叉/死叉</option>
+                  </select>
+                </Field>
               </>
             ) : form.options.timing_style === 'factor_dual' ? (
               <>

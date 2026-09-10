@@ -190,6 +190,8 @@ class TimingOptions(StrictModel):
         "ma_crossover_atr",
         "buy_and_hold",
         "ma_200",
+        "rsrs",
+        "macd_signal",
     ] = "trend"
     buy_threshold: float = 0.7
     sell_threshold: float = 0.0
@@ -231,6 +233,14 @@ class TimingOptions(StrictModel):
     atr_period: int = Field(default=20, ge=2, le=252)
     atr_stop_multiple: float = Field(default=2.0, gt=0, le=10)
     atr_trailing_multiple: float = Field(default=3.0, gt=0, le=20)
+    rsrs_n: int = Field(default=18, ge=2, le=60)
+    rsrs_m: int = Field(default=600, ge=60, le=1200)
+    rsrs_buy_threshold: float = Field(default=0.7, ge=-3, le=3)
+    rsrs_sell_threshold: float = Field(default=-0.7, ge=-3, le=3)
+    macd_fast: int = Field(default=12, ge=2, le=60)
+    macd_slow: int = Field(default=26, ge=5, le=120)
+    macd_signal: int = Field(default=9, ge=2, le=60)
+    macd_volume_filter: bool = True
     max_holding_sessions: int = Field(default=60, ge=1, le=2000)
     minimum_holding_sessions: int = Field(default=0, ge=0, le=252)
     cooldown_sessions: int = Field(default=5, ge=0, le=252)
