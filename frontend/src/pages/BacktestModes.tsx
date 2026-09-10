@@ -1167,18 +1167,28 @@ export function TimingBacktestPage() {
                   }))
                 }}
               >
-                <option value="trend">趋势跟随</option>
-                <option value="mean_reversion">低吸高抛</option>
-                <option value="factor_dual">智能双评分</option>
-                <option value="regime_reversion">综合趋势反转</option>
-                <option value="regime_reversion_legacy">
-                  综合趋势反转（旧版严格条件）
-                </option>
-                <option value="rsi_bollinger">RSI + 布林带反转</option>
-                <option value="donchian_atr">Donchian 突破 + ATR</option>
-                <option value="ma_crossover_atr">双均线趋势 + ATR</option>
-                <option value="rsrs">RSRS 阻力支撑强度</option>
-                <option value="macd_signal">MACD 信号 + 放量过滤</option>
+                <optgroup label="趋势跟随">
+                  <option value="trend">趋势跟随</option>
+                  <option value="donchian_atr">Donchian 突破 + ATR</option>
+                  <option value="ma_crossover_atr">双均线趋势 + ATR</option>
+                  <option value="rsrs">RSRS 阻力支撑强度</option>
+                  <option value="macd_signal">MACD 信号 + 放量过滤</option>
+                  <option value="ma_200">长期均线</option>
+                </optgroup>
+                <optgroup label="均值回归">
+                  <option value="mean_reversion">低吸高抛</option>
+                  <option value="rsi_bollinger">RSI + 布林带反转</option>
+                </optgroup>
+                <optgroup label="混合策略">
+                  <option value="factor_dual">智能双评分</option>
+                  <option value="regime_reversion">综合趋势反转</option>
+                  <option value="regime_reversion_legacy">
+                    综合趋势反转（旧版严格条件）
+                  </option>
+                </optgroup>
+                <optgroup label="基准对照">
+                  <option value="buy_and_hold">买入持有</option>
+                </optgroup>
               </select>
             </Field>
             {['factor_dual', 'regime_reversion', 'regime_reversion_legacy'].includes(
