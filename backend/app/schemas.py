@@ -337,7 +337,7 @@ class TimingWalkForwardProtocolRequest(StrictModel):
 
 
 class TimingWalkForwardRequest(StrictModel, SymbolListMixin):
-    symbols: list[str] = Field(min_length=2, max_length=20)
+    symbols: list[str] = Field(min_length=1, max_length=20)
     config: MultiFactorConfigRequest
     entry_config: MultiFactorConfigRequest
     exit_config: MultiFactorConfigRequest

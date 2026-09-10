@@ -62,6 +62,7 @@ from .validation.protocol import (
     common_recent_evaluation_period,
 )
 from .validation.search import (
+    generate_multi_style_candidates,
     generate_preregistered_candidates,
     parameter_perturbations,
     perturbation_stability,
@@ -349,8 +350,10 @@ def _is_etf(symbol: str) -> bool:
 
 
 def _candidate_options(base: Any, parameters: dict[str, Any]) -> Any:
+    # 候选参数中可能携带 timing_style；若未指定则默认为 regime_reversion，
+    # 保持与旧版预注册候选的兼容性。
+    style = parameters.pop("timing_style", "regime_reversion")
     updates = dict(parameters)
-    preset = int(updates.pop("weight_preset", 0))
     presets = (
         {},
         {
@@ -374,8 +377,21 @@ def _candidate_options(base: Any, parameters: dict[str, Any]) -> Any:
             "exit_regime_weight": 0.25,
         },
     )
-    updates.update(presets[preset])
-    updates["timing_style"] = "regime_reversion"
+    if style == "regime_reversion":
+        preset = int(updates.pop("weight_preset", 0))
+        updates.update(presets[preset])
+    else:
+        # Donchian / MA crossover 候选不使用 weight_preset；
+        # 清理无关的 regime 参数，避免覆盖用户配置。
+        updates.pop("weight_preset", None)
+        updates.pop("ma_period", None)
+        updates.pop("rsi_period", None)
+        updates.pop("rsi_oversold", None)
+        updates.pop("rsi_overbought", None)
+        updates.pop("bollinger_window", None)
+        updates.pop("bollinger_std", None)
+        updates.pop("setup_expiry_sessions", None)
+    updates["timing_style"] = style
     return base.model_copy(update=updates)
 
 
@@ -634,7 +650,7 @@ def _run_walk_forward_research(
             period.evaluation_start.date(),
             period.evaluation_end.date(),
         )
-        candidates = generate_preregistered_candidates(count=96)
+        candidates = generate_multi_style_candidates(count=96)
         validation_matrix = np.full(
             (len(folds), len(candidates)), np.nan
         )
@@ -835,19 +851,21 @@ def _run_walk_forward_research(
             "trend": body.options.model_copy(
                 update={"timing_style": "trend"}
             ),
-            "rsi_bollinger": final_options.model_copy(
+            "rsi_bollinger": body.options.model_copy(
                 update={"timing_style": "rsi_bollinger"}
             ),
             "factor_dual": body.options.model_copy(
                 update={"timing_style": "factor_dual"}
             ),
-            "regime_reversion_legacy": final_options.model_copy(
+            "regime_reversion_legacy": body.options.model_copy(
                 update={
                     "timing_style": "regime_reversion_legacy",
                     "regime_entry_mode": "legacy_all",
                 }
             ),
-            "regime_reversion": final_options,
+            "regime_reversion": body.options.model_copy(
+                update={"timing_style": "regime_reversion"}
+            ),
             "donchian_atr": body.options.model_copy(
                 update={"timing_style": "donchian_atr"}
             ),
@@ -855,13 +873,16 @@ def _run_walk_forward_research(
                 update={"timing_style": "ma_crossover_atr"}
             ),
         }
+        # 最终选中候选的风格可能不是 regime_reversion；
+        # 用其 tuned 参数覆盖对应风格的比较项，其余风格仍用默认参数。
+        winner_style = final_candidate.parameters.get("timing_style")
+        if winner_style is not None and winner_style in comparison_options:
+            comparison_options[winner_style] = final_options
         comparison_metrics: dict[str, dict[str, Any]] = {}
         for name, model_options in comparison_options.items():
-            metrics = final_metrics
-            if name != "regime_reversion":
-                metrics, _ = _evaluate_regime_segment(
-                    frames, oos_dates, model_options
-                )
+            metrics, _ = _evaluate_regime_segment(
+                frames, oos_dates, model_options
+            )
             comparison_metrics[name] = _comparison_view(metrics)
         buy_hold_return = comparison_metrics["buy_and_hold"].get(
             "total_return"

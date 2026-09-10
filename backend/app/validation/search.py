@@ -27,6 +27,34 @@ DEFAULT_PARAMETER_GRID: Mapping[str, tuple[Any, ...]] = MappingProxyType(
     }
 )
 
+# 三种风格各自独立的参数网格。Walk-Forward 从每种各抽 32 组共 96 组，
+# 使 Donchian 和双均线策略也接受训练验证，而不是只搜 regime_reversion。
+STYLE_PARAMETER_GRIDS: Mapping[str, Mapping[str, tuple[Any, ...]]] = MappingProxyType(
+    {
+        "regime_reversion": DEFAULT_PARAMETER_GRID,
+        "donchian_atr": MappingProxyType(
+            {
+                "donchian_entry_window": (20, 40, 55, 80),
+                "donchian_exit_window": (10, 15, 20, 30),
+                "donchian_trend_filter": (False, True),
+                "atr_period": (14, 20, 30),
+                "atr_stop_multiple": (1.5, 2.0, 2.5, 3.0),
+                "atr_trailing_multiple": (2.0, 2.5, 3.0, 4.0),
+            }
+        ),
+        "ma_crossover_atr": MappingProxyType(
+            {
+                "ma_fast_period": (10, 15, 20, 30),
+                "ma_slow_period": (40, 60, 90, 120),
+                "ma_slope_period": (5, 10, 20),
+                "atr_period": (14, 20, 30),
+                "atr_stop_multiple": (1.5, 2.0, 2.5, 3.0),
+                "atr_trailing_multiple": (2.0, 2.5, 3.0, 4.0),
+            }
+        ),
+    }
+)
+
 
 def _canonical(parameters: Mapping[str, Any]) -> str:
     return json.dumps(
@@ -102,6 +130,44 @@ def generate_preregistered_candidates(
             )
         )
     return tuple(result)
+
+
+def generate_multi_style_candidates(
+    *,
+    count: int = 96,
+    seed: int = 20260825,
+) -> tuple[Candidate, ...]:
+    """从三种风格各抽 count//3 组候选，合并为预注册集合。
+
+    每个候选的 parameters 中包含 ``timing_style``，使下游
+    ``_candidate_options`` 能按风格选择参数，而不是强制全部使用 regime_reversion。
+    """
+    styles = tuple(STYLE_PARAMETER_GRIDS)
+    per_style = count // len(styles)
+    remainder = count - per_style * len(styles)
+    merged: list[Candidate] = []
+    global_index = 0
+    for offset, style in enumerate(styles):
+        grid = STYLE_PARAMETER_GRIDS[style]
+        style_count = per_style + (1 if offset < remainder else 0)
+        candidates = generate_preregistered_candidates(
+            grid, count=style_count, seed=seed + offset,
+        )
+        for candidate in candidates:
+            params = dict(candidate.parameters)
+            params["timing_style"] = style
+            digest = hashlib.sha256(
+                _canonical(params).encode("utf-8")
+            ).hexdigest()[:16]
+            merged.append(
+                Candidate(
+                    candidate_id=f"candidate-{digest}",
+                    parameters=params,
+                    preregistration_index=global_index,
+                )
+            )
+            global_index += 1
+    return tuple(merged)
 
 
 def _metric_rows(
@@ -282,7 +348,9 @@ def perturbation_stability(
 __all__ = [
     "Candidate",
     "DEFAULT_PARAMETER_GRID",
+    "STYLE_PARAMETER_GRIDS",
     "aggregate_symbol_metrics",
+    "generate_multi_style_candidates",
     "generate_preregistered_candidates",
     "parameter_perturbations",
     "perturbation_stability",

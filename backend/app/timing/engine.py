@@ -1491,7 +1491,7 @@ def run_timing(
         )
         buy_and_hold_buy = (
             config.timing_style == "buy_and_hold"
-            and entry_funnel["orders_filled"] == 0
+            and raw_shares == 0
         )
         ma200_buy = (
             config.timing_style == "ma_200"

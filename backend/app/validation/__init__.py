@@ -28,7 +28,9 @@ from .protocol import (
 from .search import (
     Candidate,
     DEFAULT_PARAMETER_GRID,
+    STYLE_PARAMETER_GRIDS,
     aggregate_symbol_metrics,
+    generate_multi_style_candidates,
     generate_preregistered_candidates,
     parameter_perturbations,
     perturbation_stability,
@@ -65,6 +67,7 @@ __all__ = [
     "expected_maximum_sharpe",
     "fit_train_only_scaler",
     "fold_frames",
+    "generate_multi_style_candidates",
     "generate_preregistered_candidates",
     "generate_rolling_folds",
     "parameter_perturbations",

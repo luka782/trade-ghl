@@ -13,6 +13,7 @@ from app.validation import (
     assert_locked_oos_excluded,
     common_recent_evaluation_period,
     fit_train_only_scaler,
+    generate_multi_style_candidates,
     generate_preregistered_candidates,
     generate_rolling_folds,
     run_walk_forward,
@@ -191,3 +192,25 @@ def test_identical_completed_protocol_reuses_locked_oos(tmp_path) -> None:
     assert storage.find_completed_walk_forward_job(
         {"symbols": ["A", "C"], "protocol": {"locked": 12}}
     ) is None
+
+
+def test_multi_style_candidates_cover_three_styles() -> None:
+    candidates = generate_multi_style_candidates(count=96)
+
+    assert len(candidates) == 96
+    styles = {
+        candidate.parameters.get("timing_style")
+        for candidate in candidates
+    }
+    assert styles == {"regime_reversion", "donchian_atr", "ma_crossover_atr"}
+    for candidate in candidates:
+        style = candidate.parameters["timing_style"]
+        if style == "regime_reversion":
+            assert "weight_preset" in candidate.parameters
+            assert "ma_period" in candidate.parameters
+        elif style == "donchian_atr":
+            assert "donchian_entry_window" in candidate.parameters
+            assert "atr_stop_multiple" in candidate.parameters
+        elif style == "ma_crossover_atr":
+            assert "ma_fast_period" in candidate.parameters
+            assert "ma_slow_period" in candidate.parameters

@@ -398,8 +398,8 @@ export function TimingWalkForwardPanel({
   return (
     <div className="timing-walk-forward-stack">
       <Panel
-        title="八标的 Walk-Forward 验证"
-        subtitle="股票与ETF共同最近3年；最后12个完整月永久锁定为最终样本外"
+        title="Walk-Forward 验证"
+        subtitle="共同最近3年；最后12个完整月永久锁定为最终样本外"
         extra={
           status ? (
             <Badge tone={statusTone(status)}>{statusLabel(status)}</Badge>
@@ -407,7 +407,7 @@ export function TimingWalkForwardPanel({
         }
       >
         <div className="timing-protocol">
-          <div><span>共同协议</span><strong>最近 3 年 · 8 个标的</strong></div>
+          <div><span>共同协议</span><strong>最近 3 年 · 多标的</strong></div>
           <div><span>锁定区间</span><strong>最后 12 个完整月 OOS</strong></div>
           <div><span>参数候选</span><strong>约 96 组预注册候选</strong></div>
           <div><span>选择边界</span><strong>训练 / 验证 / 测试严格隔离</strong></div>
