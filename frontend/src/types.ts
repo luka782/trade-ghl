@@ -511,8 +511,8 @@ export interface TimingBacktestResult {
 }
 
 export interface TimingWalkForwardProtocol {
-  evaluation_years: 3
-  locked_oos_months: 12
+  evaluation_years: 3 | 5 | 8 | 10
+  locked_oos_months: 6 | 12 | 24
   train_months?: number
   validation_months?: number
   test_months?: number

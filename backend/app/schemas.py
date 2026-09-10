@@ -331,8 +331,8 @@ class TimingBacktestRequest(DateRangeModel):
 
 
 class TimingWalkForwardProtocolRequest(StrictModel):
-    evaluation_years: Literal[3] = 3
-    locked_oos_months: Literal[12] = 12
+    evaluation_years: Literal[3, 5, 8, 10] = 3
+    locked_oos_months: Literal[6, 12, 24] = 12
     train_months: int = Field(default=6, ge=3, le=18)
     validation_months: int = Field(default=2, ge=1, le=6)
     test_months: int = Field(default=2, ge=1, le=6)

@@ -580,6 +580,14 @@ export function TimingBacktestPage() {
     'aqmvp.timing.exit.config',
     createSmartExitConfig,
   )
+  const [wfEvalYears, setWfEvalYears] = useSessionState<number>(
+    'aqmvp.timing.wf-eval-years',
+    () => 3,
+  )
+  const [wfLockedMonths, setWfLockedMonths] = useSessionState<number>(
+    'aqmvp.timing.wf-locked-months',
+    () => 12,
+  )
   const [wfSymbols, setWfSymbols] = useSessionState<string>(
     'aqmvp.timing.wf-symbols',
     () =>
@@ -817,8 +825,8 @@ export function TimingBacktestPage() {
     adjust: form.adjust,
     benchmark: form.benchmark,
     protocol: {
-      evaluation_years: 3,
-      locked_oos_months: 12,
+      evaluation_years: wfEvalYears as 3 | 5 | 8 | 10,
+      locked_oos_months: wfLockedMonths as 6 | 12 | 24,
       train_months: 6,
       validation_months: 2,
       test_months: 2,
@@ -2217,6 +2225,33 @@ export function TimingBacktestPage() {
                     placeholder="515080,510300,600519,..."
                   />
                 </Field>
+                <div className="form-grid form-grid--2">
+                  <Field label="评价年限" hint="数据需覆盖该时段">
+                    <select
+                      value={wfEvalYears}
+                      onChange={(event) =>
+                        setWfEvalYears(Number(event.target.value))
+                      }
+                    >
+                      <option value={3}>3年</option>
+                      <option value={5}>5年</option>
+                      <option value={8}>8年</option>
+                      <option value={10}>10年（2015起）</option>
+                    </select>
+                  </Field>
+                  <Field label="锁定样本外月数">
+                    <select
+                      value={wfLockedMonths}
+                      onChange={(event) =>
+                        setWfLockedMonths(Number(event.target.value))
+                      }
+                    >
+                      <option value={6}>6个月</option>
+                      <option value={12}>12个月</option>
+                      <option value={24}>24个月</option>
+                    </select>
+                  </Field>
+                </div>
               </Panel>
               <TimingWalkForwardPanel
                 request={walkForwardRequest}

@@ -615,8 +615,8 @@ def _run_walk_forward_research(
             symbol_dates[symbol] = list(pd.to_datetime(bars["date"]))
         period = common_recent_evaluation_period(
             symbol_dates,
-            evaluation_months=36,
-            locked_oos_months=12,
+            evaluation_months=body.protocol.evaluation_years * 12,
+            locked_oos_months=body.protocol.locked_oos_months,
         )
         protocol = ValidationProtocol(
             symbols=tuple(body.symbols),
