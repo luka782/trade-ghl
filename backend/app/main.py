@@ -459,7 +459,7 @@ def _build_walk_forward_base_frames(
     return frames
 
 
-def _evaluate_regime_segment(
+def _evaluate_timing_segment(
     frames: dict[str, pd.DataFrame],
     dates: tuple[pd.Timestamp, ...] | pd.DatetimeIndex,
     options: Any,
@@ -670,7 +670,7 @@ def _run_walk_forward_research(
             )
             fold_scores: list[float] = []
             for fold_index, fold in enumerate(folds):
-                metrics, combined = _evaluate_regime_segment(
+                metrics, combined = _evaluate_timing_segment(
                     frames, fold.validation_dates, options
                 )
                 value = (
@@ -779,7 +779,7 @@ def _run_walk_forward_research(
                 body.options,
                 dict(candidates[winner_index].parameters),
             )
-            test_metrics, _ = _evaluate_regime_segment(
+            test_metrics, _ = _evaluate_timing_segment(
                 frames, fold.test_dates, options
             )
             winners.append(
@@ -813,7 +813,7 @@ def _run_walk_forward_research(
                 common_dates >= pd.Timestamp(protocol.locked_oos_start)
             ]
         )
-        final_metrics, final_returns = _evaluate_regime_segment(
+        final_metrics, final_returns = _evaluate_timing_segment(
             frames, oos_dates, final_options
         )
         validation_returns = pd.concat(
@@ -880,7 +880,7 @@ def _run_walk_forward_research(
             comparison_options[winner_style] = final_options
         comparison_metrics: dict[str, dict[str, Any]] = {}
         for name, model_options in comparison_options.items():
-            metrics, _ = _evaluate_regime_segment(
+            metrics, _ = _evaluate_timing_segment(
                 frames, oos_dates, model_options
             )
             comparison_metrics[name] = _comparison_view(metrics)
@@ -905,7 +905,7 @@ def _run_walk_forward_research(
             )
             scores: list[float] = []
             for fold in folds:
-                metrics, _ = _evaluate_regime_segment(
+                metrics, _ = _evaluate_timing_segment(
                     frames, fold.validation_dates, options
                 )
                 if metrics.get("available") and np.isfinite(

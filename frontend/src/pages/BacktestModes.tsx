@@ -572,6 +572,11 @@ export function TimingBacktestPage() {
     'aqmvp.timing.exit.config',
     createSmartExitConfig,
   )
+  const [wfSymbols, setWfSymbols] = useSessionState<string>(
+    'aqmvp.timing.wf-symbols',
+    () =>
+      '515080,510300,588200,600519,600036,603986,600487,002460',
+  )
   const [runStatus, setRunStatus] = useState<AsyncStatus>('idle')
   const [runError, setRunError] = useState('')
   const [etfLoading, setEtfLoading] = useState(false)
@@ -796,16 +801,7 @@ export function TimingBacktestPage() {
   }
 
   const walkForwardRequest: TimingWalkForwardRequest = {
-    symbols: [
-      '515080',
-      '510300',
-      '588200',
-      '600519',
-      '600036',
-      '603986',
-      '600487',
-      '002460',
-    ],
+    symbols: parseSymbols(wfSymbols),
     config: { ...config, mode: 'time_series' },
     entry_config: { ...entryConfig, mode: 'time_series' },
     exit_config: { ...exitConfig, mode: 'time_series' },
@@ -1907,10 +1903,25 @@ export function TimingBacktestPage() {
           ) : null}
           {result ? <TimingResultView result={result} /> : null}
           {form.options.timing_style === 'regime_reversion' ? (
-            <TimingWalkForwardPanel
-              request={walkForwardRequest}
-              disabled={runStatus === 'loading'}
-            />
+            <>
+              <Panel
+                title="Walk-Forward 验证标的"
+                subtitle="用逗号或换行分隔，最少1个、最多20个；建议混合股票和ETF"
+              >
+                <Field label="标的列表">
+                  <textarea
+                    rows={3}
+                    value={wfSymbols}
+                    onChange={(event) => setWfSymbols(event.target.value)}
+                    placeholder="515080,510300,600519,..."
+                  />
+                </Field>
+              </Panel>
+              <TimingWalkForwardPanel
+                request={walkForwardRequest}
+                disabled={runStatus === 'loading'}
+              />
+            </>
           ) : null}
         </div>
       </div>
