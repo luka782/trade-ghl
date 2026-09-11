@@ -1913,7 +1913,7 @@ export function TimingBacktestPage() {
                 </div>
               </>
             )}
-            {['donchian_atr', 'ma_crossover_atr'].includes(
+            {['donchian_atr'].includes(
               form.options.timing_style,
             ) ? (
               <div className="form-grid form-grid--3">
@@ -1953,7 +1953,8 @@ export function TimingBacktestPage() {
                   />
                 </Field>
               </div>
-            ) : (
+            ) : null}
+            {form.options.timing_style !== 'buy_and_hold' ? (
               <div className="form-grid form-grid--2">
                 <Field label="固定止损" hint="小数，0.08 = 8%">
                   <NumberInput
@@ -1981,7 +1982,7 @@ export function TimingBacktestPage() {
                   />
                 </Field>
               </div>
-            )}
+            ) : null}
             <Field label="吊灯止损" hint="ATR自适应棘轮止损，趋势中持有更久">
               <select
                 value={
