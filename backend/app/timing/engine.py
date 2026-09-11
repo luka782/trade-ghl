@@ -1517,7 +1517,6 @@ def run_timing(
             or (
                 _valid_price(row.get("ma_200"))
                 and adjusted_close > _number(row.get("ma_200"))
-                and _number(row.get("ma_slope_20")) > 0
             )
         )
         donchian_buy = (
@@ -1772,37 +1771,59 @@ def run_timing(
         elif pending is None and raw_shares and entry_index is not None:
             held_sessions = index - entry_index
             if held_sessions >= config.minimum_holding_sessions:
-                cta_style = config.timing_style in {
+                # 趋势策略：信号退出 + 固定止损 + 吊灯止损
+                # 均值回归策略：信号退出 + 固定止损 + 移动止损（不用吊灯）
+                # Donchian：通道退出 + ATR止损（不用固定/移动止损）
+                # MA交叉：死叉退出 + 吊灯止损（不用ATR/固定/移动止损）
+                trend_style = config.timing_style in {
+                    "trend",
                     "donchian_atr",
                     "ma_crossover_atr",
-                }
-                # ma_crossover_atr 的主要退出是死叉，不用ATR初始/移动止损。
-                # donchian_atr 没有死叉退出，需要ATR止损。
-                atr_stop_style = config.timing_style == "donchian_atr"
-                signal_only_baseline = config.timing_style in {
-                    "buy_and_hold",
-                    "ma_200",
                     "rsrs",
                     "macd_signal",
+                    "ma_200",
+                }
+                reversion_style = config.timing_style in {
+                    "mean_reversion",
+                    "rsi_bollinger",
+                    "factor_dual",
+                    "regime_reversion",
+                    "regime_reversion_legacy",
+                }
+                # 固定止损用于趋势（除Donchian/MA交叉）和均值回归策略
+                fixed_stop_eligible = (
+                    config.timing_style
+                    in {
+                        "trend",
+                        "rsrs",
+                        "macd_signal",
+                        "ma_200",
+                        "mean_reversion",
+                        "rsi_bollinger",
+                        "factor_dual",
+                        "regime_reversion",
+                        "regime_reversion_legacy",
+                    }
+                )
+                # 移动止损同上：趋势和均值回归策略都用，Donchian/MA交叉不用
+                trailing_stop_eligible = fixed_stop_eligible
+                signal_only_baseline = config.timing_style in {
+                    "buy_and_hold",
                 }
                 fixed_stop_hit = (
-                    not cta_style
-                    and not signal_only_baseline
-                    and
-                    np.isfinite(adjusted_close)
+                    fixed_stop_eligible
+                    and np.isfinite(adjusted_close)
                     and adjusted_close
                     <= entry_adjusted_price * (1.0 - config.fixed_stop)
                 )
                 trailing_stop_hit = (
-                    not cta_style
-                    and not signal_only_baseline
-                    and
-                    np.isfinite(adjusted_close)
+                    trailing_stop_eligible
+                    and np.isfinite(adjusted_close)
                     and adjusted_close
                     <= peak_adjusted_close * (1.0 - config.trailing_stop)
                 )
                 atr_initial_stop_hit = (
-                    atr_stop_style
+                    config.timing_style == "donchian_atr"
                     and np.isfinite(adjusted_close)
                     and np.isfinite(entry_atr)
                     and adjusted_close
@@ -1810,7 +1831,7 @@ def run_timing(
                     - config.atr_stop_multiple * entry_atr
                 )
                 atr_trailing_stop_hit = (
-                    atr_stop_style
+                    config.timing_style == "donchian_atr"
                     and np.isfinite(adjusted_close)
                     and np.isfinite(peak_adjusted_close)
                     and np.isfinite(atr_value)
