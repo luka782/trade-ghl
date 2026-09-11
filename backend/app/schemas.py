@@ -69,7 +69,7 @@ class FactorAnalyzeRequest(DateRangeModel, SymbolListMixin):
     forward_period: int = Field(default=5, ge=1, le=252)
     quantiles: int = Field(default=5, ge=2, le=20)
     adjust: Adjustment = "qfq"
-    benchmark: Literal["CSI300", "CSI500"] = "CSI300"
+    benchmark: Literal["CSI300", "CSI500", "BUY_HOLD"] = "CSI300"
     preprocess: PreprocessOptions | PreprocessMode = Field(
         default_factory=PreprocessOptions
     )
@@ -93,7 +93,7 @@ class BacktestRequest(DateRangeModel, SymbolListMixin):
     historical_stamp_duty: bool = True
     slippage_rate: float = Field(default=0.0005, ge=0, lt=1)
     max_stale_sessions: int = Field(default=20, ge=1, le=252)
-    benchmark: Literal["CSI300", "CSI500"] = "CSI300"
+    benchmark: Literal["CSI300", "CSI500", "BUY_HOLD"] = "CSI300"
     adjust: Adjustment = "qfq"
 
     @field_validator("symbols")
@@ -165,7 +165,7 @@ class MultiFactorAnalyzeRequest(DateRangeModel, SymbolListMixin):
     forward_period: int = Field(default=5, ge=1, le=252)
     quantiles: int = Field(default=5, ge=2, le=20)
     adjust: Adjustment = "qfq"
-    benchmark: Literal["CSI300", "CSI500"] = "CSI300"
+    benchmark: Literal["CSI300", "CSI500", "BUY_HOLD"] = "CSI300"
 
     @field_validator("symbols")
     @classmethod
@@ -324,7 +324,7 @@ class TimingBacktestRequest(DateRangeModel):
     exit_config: MultiFactorConfigRequest | None = None
     options: TimingOptions = Field(default_factory=TimingOptions)
     adjust: Adjustment = "qfq"
-    benchmark: Literal["CSI300", "CSI500"] = "CSI300"
+    benchmark: Literal["CSI300", "CSI500", "BUY_HOLD"] = "CSI300"
     is_etf: bool = False
 
     @field_validator("symbol")
@@ -356,7 +356,7 @@ class TimingWalkForwardRequest(StrictModel, SymbolListMixin):
     exit_config: MultiFactorConfigRequest
     options: TimingOptions
     adjust: Adjustment = "qfq"
-    benchmark: Literal["CSI300", "CSI500"] = "CSI300"
+    benchmark: Literal["CSI300", "CSI500", "BUY_HOLD"] = "CSI300"
     protocol: TimingWalkForwardProtocolRequest = Field(
         default_factory=TimingWalkForwardProtocolRequest
     )

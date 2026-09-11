@@ -76,7 +76,11 @@ from .validation.walk_forward import generate_rolling_folds
 # API 层只负责编排“加载数据 → 计算信号/指标 → 调用回测或验证 → 持久化结果”。
 # 市场规则留在 backtest/timing，因子公式留在 factors，避免 HTTP 端点演变为
 # 无法单元测试的业务巨型函数。
-BENCHMARK_SYMBOLS = {"CSI300": "000300", "CSI500": "000905"}
+BENCHMARK_SYMBOLS = {
+    "CSI300": "000300",
+    "CSI500": "000905",
+    "BUY_HOLD": "",  # 空字符串表示用标的自身买入持有做基准
+}
 FACTOR_ALIASES = {
     "momentum_20d": "momentum_20",
     "volatility_20d": "volatility_20",
@@ -1074,6 +1078,19 @@ def _attach_benchmark_columns(
     benchmark: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame | None, str | None]:
     symbol = BENCHMARK_SYMBOLS[benchmark]
+    # BUY_HOLD 基准：用标的自身的前复权收盘价作为基准，不拉取指数。
+    if symbol == "":
+        bars = (
+            panel.loc[:, ["symbol", "date", "close"]]
+            .rename(columns={"close": "close"})
+            .copy()
+        )
+        bars["date"] = pd.to_datetime(bars["date"])
+        bars = bars.sort_values("date").reset_index(drop=True)
+        try:
+            return merge_benchmark_bars(panel, bars), bars, None
+        except (FactorUnavailableError, ValueError) as exc:
+            return panel, None, f"BUY_HOLD benchmark unavailable: {exc}"
     start_date = pd.Timestamp(panel["date"].min()).date()
     end_date = pd.Timestamp(panel["date"].max()).date()
     try:

@@ -87,12 +87,13 @@ def moving_average_entry(
     previous_slow: float,
     fast: float,
     slow: float,
-    slow_slope: float,
+    slow_slope: float = 0.0,
 ) -> bool:
+    # 与开源PandOvo对齐：仅要求金叉，不要求慢均线斜率>0。
+    # 斜率过滤会漏掉慢均线走平或微跌时的有效入场信号。
     return (
         previous_fast <= previous_slow
         and fast > slow
-        and slow_slope > 0
     )
 
 

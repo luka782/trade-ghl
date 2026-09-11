@@ -1544,13 +1544,11 @@ def run_timing(
         )
         ma_crossover_buy = (
             ma_cross_candidate
-            and np.isfinite(ma_slow_slope)
             and moving_average_entry(
                 previous_fast=previous_ma_fast,
                 previous_slow=previous_ma_slow,
                 fast=ma_fast,
                 slow=ma_slow,
-                slow_slope=ma_slow_slope,
             )
         )
         buy_and_hold_buy = (
@@ -1778,6 +1776,9 @@ def run_timing(
                     "donchian_atr",
                     "ma_crossover_atr",
                 }
+                # ma_crossover_atr 的主要退出是死叉，不用ATR初始/移动止损。
+                # donchian_atr 没有死叉退出，需要ATR止损。
+                atr_stop_style = config.timing_style == "donchian_atr"
                 signal_only_baseline = config.timing_style in {
                     "buy_and_hold",
                     "ma_200",
@@ -1801,7 +1802,7 @@ def run_timing(
                     <= peak_adjusted_close * (1.0 - config.trailing_stop)
                 )
                 atr_initial_stop_hit = (
-                    cta_style
+                    atr_stop_style
                     and np.isfinite(adjusted_close)
                     and np.isfinite(entry_atr)
                     and adjusted_close
@@ -1809,7 +1810,7 @@ def run_timing(
                     - config.atr_stop_multiple * entry_atr
                 )
                 atr_trailing_stop_hit = (
-                    cta_style
+                    atr_stop_style
                     and np.isfinite(adjusted_close)
                     and np.isfinite(peak_adjusted_close)
                     and np.isfinite(atr_value)

@@ -434,6 +434,7 @@ export function MultiFactorBacktestPage({
                     >
                       <option value="CSI300">沪深 300</option>
                       <option value="CSI500">中证 500</option>
+                      <option value="BUY_HOLD">标的买入持有</option>
                     </select>
                   </Field>
                   <Field label="价格复权">
@@ -2250,6 +2251,7 @@ export function TimingBacktestPage() {
                     >
                       <option value="CSI300">沪深 300</option>
                       <option value="CSI500">中证 500</option>
+                      <option value="BUY_HOLD">标的买入持有</option>
                     </select>
                   </Field>
                   <Field label="价格复权">
