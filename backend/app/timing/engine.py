@@ -78,7 +78,7 @@ _REASON_CN = {
     "rsi_bollinger_entry": "买入_RSI与布林带反转确认",
     "donchian_breakout": "买入_Donchian突破",
     "donchian_exit": "卖出_Donchian退出",
-    "ma_crossover": "买入_双均线金叉且慢均线向上",
+    "ma_crossover": "买入_双均线金叉",
     "ma_crossdown": "卖出_双均线死叉",
     "buy_and_hold_entry": "买入_买入持有基准建仓",
     "ma200_entry": "买入_价格位于MA200上方",
